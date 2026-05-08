@@ -37,7 +37,7 @@ if boton:
     c3.metric("RSI (Fuerza)", f"{rsi_act:.2f}")
             # Veredicto visual
     st.markdown("### 📋 Veredicto de Actuación")
-            if precio_act > sma50_act:
+    if precio_act > sma50_act:
                 if rsi_act > 70:
                     st.warning("🟡 MANTENER: Tendencia alcista pero con mucha euforia. No compres más ahora.")
                 else:
