@@ -30,12 +30,11 @@ if boton:
             rsi_act = df['RSI'].iloc[-1]
             sma50_act = df['SMA50'].iloc[-1]
 
-            # Mostrar métricas destacadas
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Precio", f"${precio_act:.2f}")
-            c2.metric("Media 50d", f"${sma50_act:.2f}")
-            c3.metric("RSI (Fuerza)", f"{rsi_act:.2f}")
-
+           # Mostrar métricas destacadas
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Precio Actual", f"${precio_act:.2f}")
+    c2.metric("Media 50d", f"${sma50_act:.2f}")
+    c3.metric("RSI (Fuerza)", f"{rsi_act:.2f}")
             # Veredicto visual
             st.markdown("### 📋 Veredicto de Actuación")
             if precio_act > sma50_act:
