@@ -1,5 +1,3 @@
-
-
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -16,19 +14,23 @@ boton = st.sidebar.button("Analizar Ahora")
 
 if boton:
     with st.spinner('Analizando mercado...'):
+        # Descarga de datos
         df = yf.download(ticker, period="1y", interval="1d")
         
         if not df.empty and len(df) > 0:
-            # 3. Cálculos técnicos corregidos
-            df['SMA50'] = df.Close.rolling(window=50).mean()
-            delta = df.Close.diff()
+            # CORRECCIÓN DEFINITIVA: Limpiar nombres de columnas
+            df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
+            
+            # 3. Cálculos técnicos
+            df['SMA50'] = df['Close'].rolling(window=50).mean()
+            delta = df['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
             rs = gain / loss
             df['RSI'] = 100 - (100 / (1 + rs))
 
             # Extraer valores actuales
-            precio_act = float(df.Close.iloc[-1])
+            precio_act = float(df['Close'].iloc[-1])
             rsi_act = float(df['RSI'].iloc[-1])
             sma50_act = float(df['SMA50'].iloc[-1])
 
@@ -48,8 +50,8 @@ if boton:
             else:
                 st.error("🔴 ESPERAR: Activo en tendencia bajista.")
 
-            # 6. Gráfico interactivo (Línea añadida)
+            # 6. Gráfico interactivo
             st.markdown("### 📈 Gráfico de Medio Plazo")
             st.line_chart(df[['Close', 'SMA50']])
         else:
-            st.error("No se encontraron datos para ese Ticker. Revisa si está bien escrito.")
+            st.error("No se encontraron datos para ese Ticker.")
