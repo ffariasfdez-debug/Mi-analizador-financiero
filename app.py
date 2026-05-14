@@ -19,7 +19,23 @@ modo = st.sidebar.radio("Ir a:", ["🔍 Análisis Individual", "📂 Mis Listas"
 # --- FUNCIÓN MAESTRA DE CÁLCULO ---
 def obtener_datos(ticker):
     try:
-        df = yf.download(ticker, period="1y", progress=False)
+        # Añadimos auto_adjust para evitar problemas de columnas
+        df = yf.download(ticker, period="1y", interval="1d", progress=False, auto_adjust=True)
+        
+        if df.empty or len(df) < 50:
+            return None
+            
+        # Limpieza de nombres de columnas por si acaso
+        df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
+        
+        # Aseguramos que 'Close' existe (a veces yfinance lo llama 'Close' o 'Adj Close')
+        if 'Close' not in df.columns and 'Adj Close' in df.columns:
+            df['Close'] = df['Adj Close']
+            
+        return df
+    except Exception as e:
+        st.error(f"Error de conexión: {e}")
+        return None
         if df.empty or len(df) < 50: return None
         df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
         
