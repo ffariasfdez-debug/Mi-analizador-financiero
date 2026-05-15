@@ -76,3 +76,5 @@ if btn:
             st.area_chart(data['RSI'], height=150)
     else:
         st.error("Error al cargar datos.")
+
+
