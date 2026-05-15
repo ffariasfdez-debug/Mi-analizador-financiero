@@ -3,32 +3,26 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-st.set_page_config(page_title="Analizador Pro: Estrategia Definitiva", layout="wide")
+st.set_page_config(page_title="Analizador Pro: Momentum & Robótica", layout="wide")
 
 def obtener_recomendacion(m):
-    # Lógica de Inversión Refinada (Evitando comprar en picos)
-    dist_sma50 = ((m['Precio'] / m['SMA50']) - 1) * 100
-    
+    # Lógica de Inversión Refinada
     if m['RSI'] > 75:
-        return "🚨 SOBRECOMPRA EXTREMA", f"Riesgo muy alto. No comprar aquí. Esperar retroceso a la zona de ${m['SMA50']:.2f}."
-    
+        return "🚨 SOBRECOMPRA EXTREMA", f"Riesgo muy alto de corrección. No comprar aquí. Esperar retroceso a zona de ${m['SMA50']:.2f}."
     elif 68 < m['RSI'] <= 75:
-        return "⚠️ MANTENER / NO PERSEGUIR", "Fuerza brutal, pero el precio está extendido. Si ya las tienes, mantén; si no, espera un descanso."
-    
+        return "⚠️ MANTENER / NO PERSEGUIR", "Fuerza alta, pero el precio está extendido. Si ya las tienes, mantén; si no, espera un descanso."
     elif m['Precio'] > m['SMA50'] and 50 < m['RSI'] <= 68:
-        return "🔥 COMPRAR (Punto Óptimo)", "Combinación ideal: Tendencia alcista con margen de subida antes de sobrecompra."
-    
+        return "🔥 COMPRAR (Punto Óptimo)", "Tendencia alcista con margen de subida antes de sobrecompra."
     elif m['Precio'] < m['SMA200']:
-        return "❄️ EVITAR / BAJISTA", f"Bajo la media de 200. Mucho riesgo. Solo entrar si recupera los ${m['SMA200']:.2f}."
-    
+        return "❄️ EVITAR / BAJISTA", f"Tendencia negativa a largo plazo. Solo entrar si recupera los ${m['SMA200']:.2f}."
     elif m['RSI'] < 35:
-        return "🎯 OPORTUNIDAD (Sobreventa)", f"Posible suelo temporal. Nivel de rebote técnico en ${m['Precio']:.2f}."
-    
+        return "🎯 OPORTUNIDAD (Sobreventa)", f"Posible suelo temporal. Rebote técnico probable cerca de ${m['Precio']:.2f}."
     else:
-        return "⌛ ESPERAR / VIGILAR", f"Buscando dirección. Vigilar si rompe los ${m['SMA50']:.2f} con volumen."
+        return "⌛ ESPERAR / VIGILAR", "Buscando dirección clara. Vigilar si rompe la media de 50 con fuerza."
 
 def calcular_analitica(df):
     if df.empty or len(df) < 200: return None
+    # Limpieza de columnas para yfinance
     df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
     
     precio = df['Close'].iloc[-1]
@@ -49,46 +43,50 @@ def calcular_analitica(df):
         "Cambio": df['Close'].pct_change().iloc[-1] * 100,
         "df_grafico": df[['Close', 'SMA50', 'SMA200']].tail(252)
     }
-    
     m['Accion'], m['Detalle'] = obtener_recomendacion(m)
     return m
+
+# --- CONFIGURACIÓN DE LISTAS ---
+listas_seguimiento = {
+    "Robótica/IA": ["ISRG", "ABB", "6861.T", "SYM", "SERV", "272210.KS", "TER", "6954.T", "SYK", "CGNX", "AUR", "MBLY"],
+    "Tecnología": ["NVDA", "TSLA", "AAPL", "MSFT", "AMD"],
+    "Cripto/ETF": ["BTC-USD", "COIN", "MSTR", "IBIT"],
+    "Bélgica/EU": ["ABI.BR", "UCB.BR", "SAP", "ASML.AS"]
+}
 
 # --- INTERFAZ ---
 st.sidebar.title("Estrategia 2026-2030")
 modo = st.sidebar.radio("Modo:", ["🔍 Análisis Individual", "📊 Comparador de Listas"])
 
-listas_seguimiento = {
-    "Tecnología": ["NVDA", "TSLA", "AAPL", "MSFT", "AMD"],
-    "Semicond": ["ASML", "AVGO", "ARM", "SMCI", "MU"],
-    "Cripto/ETF": ["BTC-USD", "COIN", "MSTR", "IBIT"],
-    "Bélgica/EU": ["ABI.BR", "UCB.BR", "SAP", "ASML.AS"]
-}
-
 if modo == "🔍 Análisis Individual":
-    ticker = st.text_input("Ticker:", "NVDA").upper()
+    ticker = st.text_input("Introduce Ticker:", "ISRG").upper()
     if st.button("Analizar"):
         data = yf.Ticker(ticker).history(period="2y")
         m = calcular_analitica(data)
         if m:
-            st.subheader(f"Estrategia: {m['Accion']}")
-            st.info(f"**Nota Técnica:** {m['Detalle']}")
+            st.header(f"Estrategia: {m['Accion']}")
+            st.info(f"**Análisis Técnico:** {m['Detalle']}")
             
             c1, c2, c3 = st.columns(3)
-            c1.metric("Precio", f"${m['Precio']:.2f}", f"{m['Cambio']:.2f}%")
-            c2.metric("RSI", f"{m['RSI']:.1f}")
-            c3.metric("Suelo (SMA200)", f"${m['SMA200']:.2f}")
+            c1.metric("Precio Actual", f"${m['Precio']:.2f}", f"{m['Cambio']:.2f}%")
+            c2.metric("Fuerza RSI", f"{m['RSI']:.1f}")
+            c3.metric("Suelo Largo Plazo", f"${m['SMA200']:.2f}")
 
             st.line_chart(m['df_grafico'])
         else:
-            st.error("Error de datos.")
+            st.error("No se encontraron datos suficientes. Revisa el Ticker.")
+
 else:
-    st.title("Panel de Momentum")
-    lista_sel = st.sidebar.selectbox("Lista:", list(listas_seguimiento.keys()))
-    if st.button("Analizar Lista"):
+    st.title("Momentum de mis Listas")
+    lista_sel = st.sidebar.selectbox("Selecciona Lista:", list(listas_seguimiento.keys()))
+    if st.button("Ejecutar Análisis"):
         res = []
-        for t in listas_seguimiento[lista_sel]:
+        progreso = st.progress(0)
+        for i, t in enumerate(listas_seguimiento[lista_sel]):
             d = yf.Ticker(t).history(period="2y")
             m = calcular_analitica(d)
             if m:
-                res.append({"Ticker": t, "RSI": round(m['RSI'], 1), "Acción": m['Accion']})
+                res.append({"Ticker": t, "RSI": round(m['RSI'], 1), "Estado": m['Accion']})
+            progreso.progress((i + 1) / len(listas_seguimiento[lista_sel]))
+        
         st.table(pd.DataFrame(res))
