@@ -117,7 +117,7 @@ with pestana1:
                 st.table(pd.DataFrame(resultados))
 
 # =========================================================
-# PESTAÑA 2: EL BOT MASIVO (65 COMPAÑÍAS)
+# PESTAÑA 2: EL BOT MASIVO (65 COMPAÑÍAS + CONTROL MANUAL)
 # =========================================================
 with pestana2:
     UNIVERSO_EXPANDIDO = {
@@ -146,76 +146,4 @@ with pestana2:
             ind = pos["Industria"]
             conteo_industrias[ind] = conteo_industrias.get(ind, 0) + 1
             
-        for industria, tickers in UNIVERSO_EXPANDIDO.items():
-            if conteo_industrias.get(industria, 0) >= 2:
-                continue
-                
-            for ticker in tickers:
-                if len(st.session_state.cartera_bot) >= 10 or st.session_state.efectivo < 3000:
-                    break
-                if ticker in lista_exclusiones or any(p["Ticker"] == ticker for p in st.session_state.cartera_bot):
-                    continue
-                    
-                ans = analizar_activo(ticker)
-                if ans and ans["estado"] == "COMPRAR":
-                    st.session_state.cartera_bot.append({
-                        "Ticker": ticker, "Industria": industria, "Precio Entrada": f"{ans['precio']:.2f} $", "RSI": round(ans['rsi'], 1), "Bróker Destino": ans["broker"]
-                    })
-                    st.session_state.efectivo -= 3000
-                    conteo_industrias[industria] = conteo_industrias.get(industria, 0) + 1
-                    reporte_movimientos.append({
-                        "Acción": f"COMPRADO {ticker}", "Subsector": industria, "Destino Recomendado": ans["broker"], "Motivo Técnico": ans["motivo"]
-                    })
-                    break
-                    
-        if reporte_movimientos:
-            st.subheader("📝 Bitácora de Operaciones de Hoy")
-            st.table(pd.DataFrame(reporte_movimientos))
-            
-    st.markdown("---")
-    st.subheader("📊 Estado Actual de la Cartera del Bot")
-    if st.session_state.cartera_bot:
-        st.table(pd.DataFrame(st.session_state.cartera_bot))
-        if st.button("🗑️ Reiniciar Cartera del Bot"):
-            st.session_state.efectivo = 30000.0
-            st.session_state.cartera_bot = []
-            st.rerun()
-    else:
-        st.write("Cartera en 100% liquidez.")
-
-# =========================================================
-# PESTAÑA 3: GESTOR DE LISTAS MANUALES
-# =========================================================
-with pestana3:
-    st.header("⚙️ Gestor de Listas de Seguimiento")
-    
-    lista_a_modificar = st.selectbox("Selecciona la lista a gestionar:", list(st.session_state.listas_seguimiento.keys()), key="edit_lista")
-    acciones_actuales = st.session_state.listas_seguimiento[lista_a_modificar]
-    
-    if acciones_actuales:
-        st.info(", ".join(acciones_actuales))
-    else:
-        st.warning("Lista vacía")
-    
-    st.markdown("---")
-    col_add, col_del = st.columns(2)
-    
-    with col_add:
-        st.markdown("### ➕ Añadir Ticker")
-        nuevo_ticker = st.text_input("Escribe el ticker:", value="", key="add_t").upper().strip()
-        if st.button("✅ Confirmar Añadir", key="btn_add"):
-            if nuevo_ticker and nuevo_ticker not in acciones_actuales:
-                st.session_state.listas_seguimiento[lista_a_modificar].append(nuevo_ticker)
-                st.success(f"{nuevo_ticker} añadido.")
-                st.rerun()
-                
-    with col_del:
-        st.markdown("### ❌ Eliminar Ticker")
-        if acciones_actuales:
-            ticker_a_borrar = st.selectbox("Elige cuál quitar:", acciones_actuales, key="del_t")
-            if st.button("🗑️ Confirmar Borrado", key="btn_del"):
-                st.session_state.listas_seguimiento[lista_a_modificar].remove(ticker_a_borrar)
-                st.success(f"{ticker_a_borrar} eliminado.")
-                st.rerun()
-        else:
-            st.write("No hay acciones para eliminar.")
+        for industria
