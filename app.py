@@ -22,8 +22,8 @@ if "efectivo" not in st.session_state:
 if "cartera_bot" not in st.session_state:
     st.session_state.cartera_bot = []
 
-if "cartera_real_comprada" not in st.session_state:
-    st.session_state.cartera_real_comprada = []
+if "oportunidades_detectadas" not in st.session_state:
+    st.session_state.oportunidades_detectadas = []
 
 # --- MOTOR DE CÁLCULO TÉCNICO ---
 def analizar_activo(ticker):
@@ -50,21 +50,21 @@ def analizar_activo(ticker):
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rsi = (100 - (100 / (1 + (gain / loss)))).iloc[-1]
         
-        # Enrutamiento fiscal estricto de activos
+        # Filtro fiscal (ING para 0% dividendos)
         if dividend_yield == 0:
-            broker_optimo = "ING España (0% Dividendo - Eficiente)"
+            broker_optimo = "ING España (0% Div)"
         else:
-            broker_optimo = "Bolero / Revolut (Acción con Dividendo)"
+            broker_optimo = "Bolero / Revolut"
             
-        # Condición matemática estricta de entrada
+        # Condición técnica de entrada
         if precio > sma200 and 45 <= rsi <= 55:
             estado = "COMPRAR"
-            motivo = f"RSI óptimo en zona de acumulación ({rsi:.1f}) y cotizando sobre la SMA 200."
+            motivo = f"RSI óptimo ({rsi:.1f}) sobre SMA 200."
         else:
             estado = "ESPERAR"
-            motivo = f"RSI en {rsi:.1f}. No se encuentra en la ventana técnica de entrada."
+            motivo = f"RSI en {rsi:.1f}. Fuera de rango."
             
-        return {"estado": estado, "precio": precio, "rsi": rsi, "broker": broker_optimo, "motivo": motivo, "yield": dividend_yield}
+        return {"estado": estado, "precio": precio, "rsi": rsi, "broker": broker_optimo, "motivo": motivo}
     except:
         return None
 
@@ -99,7 +99,7 @@ with pestana1:
                 c_e.metric("Filtro", res_ind['estado'])
                 st.info(f"**Destino Sugerido:** {res_ind['broker']}\n\n**Nota:** {res_ind['motivo']}")
             else:
-                st.error("Ticker no válido o sin datos históricos suficientes.")
+                st.error("Ticker no válido o sin datos suficientes.")
                 
     with col_listas:
         st.subheader("📋 Opción 2: Listas de Seguimiento")
@@ -123,7 +123,7 @@ with pestana1:
                 st.table(pd.DataFrame(resultados))
 
 # =========================================================
-# PESTAÑA 2: RADAR ALGORÍTMICO CON BOTÓN DE ENTRADA REAL
+# PESTAÑA 2: RADAR ALGORÍTMICO CON PERSISTENCIA POR FORMULARIO
 # =========================================================
 with pestana2:
     st.subheader("🤖 Simulación del Universo de Inversión (65 Líderes)")
@@ -139,7 +139,7 @@ with pestana2:
         "Sistemas Autónomos / LiDAR": ["MBLY", "AUR", "LAZR", "APTIV"]
     }
     
-    exclusiones_input = st.text_input("🛡️ Excluir de la simulación (Acciones que ya tienes en cartera real, ej: NVDA, ASML):", value="", key="bot_excl").upper()
+    exclusiones_input = st.text_input("🛡️ Excluir de la simulación (Acciones que ya tienes, ej: NVDA, ASML):", value="", key="bot_excl").upper()
     lista_exclusiones = [t.strip() for t in exclusiones_input.split(",") if t.strip()]
     
     c1, c2, c3 = st.columns(3)
@@ -147,81 +147,95 @@ with pestana2:
     c2.metric("Efectivo Libre Simulado", f"{st.session_state.efectivo:,.2f} €")
     c3.metric("Posiciones Ocupadas", f"{len(st.session_state.cartera_bot)} / 10")
     
-    # Botón principal de ejecución del escáner
-    ejecutar_escaneo = st.button("🔌 Ejecutar Escáner de Mercado Masivo", key="btn_run_bot")
-    
-    if ejecutar_escaneo:
-        st.session_state.oportunidades_detectadas = []
-        
-        # Control estricto de diversificación por sectores (Máx 2 por subsector)
-        sectores_activos = {}
-        for pos in st.session_state.cartera_bot:
-            sec = pos["Subsector"]
-            sectores_activos[sec] = sectores_activos.get(sec, 0) + 1
+    # 1. BOTÓN DE DISPARO DEL ESCÁNER
+    if st.button("🔌 Lanzar Escáner Masivo del Mercado", key="btn_run_bot"):
+        with st.spinner("Analizando fundamentales y flujos técnicos en yFinance..."):
+            temp_oportunidades = []
+            sectores_activos = {}
             
-        for sector, tickers in UNIVERSO_EXPANDIDO.items():
-            if sectores_activos.get(sector, 0) >= 2:
-                continue
+            for pos in st.session_state.cartera_bot:
+                sec = pos["Subsector"]
+                sectores_activos[sec] = sectores_activos.get(sec, 0) + 1
                 
-            for ticker in tickers:
-                if len(st.session_state.cartera_bot) >= 10 or st.session_state.efectivo < 3000:
-                    break
-                if ticker in lista_exclusiones or any(p["Ticker"] == ticker for p in st.session_state.cartera_bot):
+            for sector, tickers in UNIVERSO_EXPANDIDO.items():
+                if sectores_activos.get(sector, 0) >= 2:
                     continue
                     
-                ans = analizar_activo(ticker)
-                # Si cumple con las condiciones técnicas de COMPRA, se captura
-                if ans and ans["estado"] == "COMPRAR":
-                    st.session_state.oportunidades_detectadas.append({
-                        "Ticker": ticker,
-                        "Subsector": sector,
-                        "Precio": ans["precio"],
-                        "RSI": ans["rsi"],
-                        "Broker": ans["broker"],
-                        "Motivo": ans["motivo"]
-                    })
-                    break # Saltamos al siguiente subsector para asegurar diversificación lineal
+                for ticker in tickers:
+                    if ticker in lista_exclusiones or any(p["Ticker"] == ticker for p in st.session_state.cartera_bot):
+                        continue
+                        
+                    ans = analizar_activo(ticker)
+                    if ans and ans["estado"] == "COMPRAR":
+                        temp_oportunidades.append({
+                            "Ticker": ticker,
+                            "Subsector": sector,
+                            "Precio": ans["precio"],
+                            "RSI": ans["rsi"],
+                            "Broker": ans["broker"],
+                            "Motivo": ans["motivo"]
+                        })
+                        break # Diversificación por subsector
+            
+            st.session_state.oportunidades_detectadas = temp_oportunidades
 
-    # DESPLIEGUE DE ALERTAS CON OPCIÓN DE ADICIÓN DIRECTA
-    if "oportunidades_detectadas" in st.session_state and st.session_state.oportunidades_detectadas:
-        st.markdown("### 🚨 Oportunidades Técnicas Encontradas Hoy")
-        st.write("Revisa los parámetros técnicos antes de enviarlas a tu sección de órdenes:")
+    # 2. INTERFAZ ESTABLE DE SELECCIÓN MEDIANTE UN FORMULARIO
+    if st.session_state.oportunidades_detectadas:
+        st.markdown("### 🚨 Entradas Técnicas Confirmadas")
+        st.write("Selecciona los activos que deseas incorporar hoy a tu registro:")
         
-        for op in st.session_state.oportunidades_detectadas:
-            with st.container():
-                col_info, col_accion = st.columns([4, 1])
-                with col_info:
-                    st.markdown(f"**⚡ COMPRA SUGERIDA: {op['Ticker']}** ({op['Subsector']})")
-                    st.write(f"• Precio: {op['Precio']:.2f}$ | RSI: {op['RSI']:.1f}")
-                    st.write(f"• **Asignación Fiscal:** {op['Broker']}")
-                    st.caption(f"Motivo técnico: {op['Motivo']}")
-                with col_accion:
-                    # Este botón ejecuta la adición a tu radar de compras reales aprobadas
-                    if st.button(f"➕ Añadir {op['Ticker']}", key=f"add_real_{op['Ticker']}"):
-                        if not any(p["Ticker"] == op["Ticker"] for p in st.session_state.cartera_bot):
-                            st.session_state.cartera_bot.append({
-                                "Ticker": op["Ticker"],
-                                "Subsector": op["Subsector"],
-                                "Precio Entrada": f"{op['Precio']:.2f} $",
-                                "RSI": round(op['RSI'], 1),
-                                "Canal Recomendado": op["Broker"]
-                            })
-                            st.session_state.efectivo -= 3000
-                            st.success(f"¡{op['Ticker']} integrada en el panel!")
-                            st.rerun()
-            st.markdown("---")
+        # Todo lo que ocurra dentro de este form no recargará la página hasta presionar el botón de envío
+        with st.form(key="formulario_compras"):
+            seleccionados = {}
+            
+            for op in st.session_state.oportunidades_detectadas:
+                col_check, col_txt = st.columns([1, 5])
+                with col_check:
+                    # El checkbox almacena un booleano (True/False) mapeado al ticker
+                    seleccionados[op["Ticker"]] = st.checkbox(f"Añadir", key=f"chk_{op['Ticker']}")
+                with col_txt:
+                    st.markdown(f"**{op['Ticker']}** ({op['Subsector']}) — **Precio:** {op['Precio']:.2f}$ | **RSI:** {op['RSI']:.1f}")
+                    st.markdown(f"↳ *Filtro Bróker:* `{op['Broker']}` | *Nota:* {op['Motivo']}")
+                st.markdown("---")
+                
+            btn_confirmar_compras = st.form_submit_button("✅ Procesar y Añadir Posiciones Marcadas")
+            
+            if btn_confirmar_compras:
+                movimientos_ejecutados = 0
+                for op in st.session_state.oportunidades_detectadas:
+                    ticker = op["Ticker"]
+                    if seleccionados.get(ticker): # Si el usuario marcó la casilla
+                        if len(st.session_state.cartera_bot) < 10 and st.session_state.efectivo >= 3000:
+                            if not any(p["Ticker"] == ticker for p in st.session_state.cartera_bot):
+                                st.session_state.cartera_bot.append({
+                                    "Ticker": ticker,
+                                    "Subsector": op["Subsector"],
+                                    "Precio Entrada": f"{op['Precio']:.2f} $",
+                                    "RSI": round(op['RSI'], 1),
+                                    "Canal Recomendado": op["Broker"]
+                                })
+                                st.session_state.efectivo -= 3000
+                                movimientos_ejecutados += 1
+                
+                if movimientos_ejecutados > 0:
+                    st.session_state.oportunidades_detectadas = [] # Limpiamos la pantalla tras la compra
+                    st.success(f"Se han incorporado {movimientos_ejecutados} posiciones al panel de control.")
+                    st.rerun()
+    else:
+        st.info("Sin alertas activas en pantalla. Pulsa el botón de arriba para iniciar el rastreo.")
 
-    st.subheader("📊 Panel de Posiciones del Bot (Simulación Activa)")
+    # 3. PANEL DE CONTROL DE LA CARTERA DEL BOT
+    st.markdown("---")
+    st.subheader("📊 Panel de Posiciones Activas (Simulación)")
     if st.session_state.cartera_bot:
         st.table(pd.DataFrame(st.session_state.cartera_bot))
-        if st.button("🗑️ Liquidar y Reiniciar Cartera"):
+        if st.button("🗑️ Liquidar Todo y Reiniciar Efectivo"):
             st.session_state.efectivo = 30000.0
             st.session_state.cartera_bot = []
-            if "oportunidades_detectadas" in st.session_state:
-                st.session_state.oportunidades_detectadas = []
+            st.session_state.oportunidades_detectadas = []
             st.rerun()
     else:
-        st.info("El bot está al 100% en liquidez. Pulsa el botón de arriba para rastrear entradas.")
+        st.caption("Estrategia al 100% en liquidez (€).")
 
 # =========================================================
 # PESTAÑA 3: EDITOR DE LISTAS MANUALES
