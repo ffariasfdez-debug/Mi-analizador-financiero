@@ -22,6 +22,9 @@ if "efectivo" not in st.session_state:
 if "cartera_bot" not in st.session_state:
     st.session_state.cartera_bot = []
 
+if "cartera_real_comprada" not in st.session_state:
+    st.session_state.cartera_real_comprada = []
+
 # --- MOTOR DE CÁLCULO TÉCNICO ---
 def analizar_activo(ticker):
     try:
@@ -47,21 +50,21 @@ def analizar_activo(ticker):
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rsi = (100 - (100 / (1 + (gain / loss)))).iloc[-1]
         
-        # Enrutamiento fiscal de activos
+        # Enrutamiento fiscal estricto de activos
         if dividend_yield == 0:
-            broker_optimo = "ING (0% Div) o Bolero/Revolut"
+            broker_optimo = "ING España (0% Dividendo - Eficiente)"
         else:
-            broker_optimo = "Bolero / Revolut (Paga Dividendo)"
+            broker_optimo = "Bolero / Revolut (Acción con Dividendo)"
             
-        # Condición matemática de entrada (Precio sobre SMA200 + RSI plano)
+        # Condición matemática estricta de entrada
         if precio > sma200 and 45 <= rsi <= 55:
             estado = "COMPRAR"
-            motivo = f"Filtro técnico OK. RSI en zona de acumulación ({rsi:.1f}) y precio sobre SMA 200."
+            motivo = f"RSI óptimo en zona de acumulación ({rsi:.1f}) y cotizando sobre la SMA 200."
         else:
             estado = "ESPERAR"
-            motivo = f"RSI en {rsi:.1f}. No cumple ventana de entrada óptima."
+            motivo = f"RSI en {rsi:.1f}. No se encuentra en la ventana técnica de entrada."
             
-        return {"estado": estado, "precio": precio, "rsi": rsi, "broker": broker_optimo, "motivo": motivo}
+        return {"estado": estado, "precio": precio, "rsi": rsi, "broker": broker_optimo, "motivo": motivo, "yield": dividend_yield}
     except:
         return None
 
@@ -94,7 +97,7 @@ with pestana1:
                 c_p.metric("Precio Actual", f"{res_ind['precio']:.2f} $")
                 c_r.metric("RSI", f"{res_ind['rsi']:.1f}")
                 c_e.metric("Filtro", res_ind['estado'])
-                st.info(f"**Destino:** {res_ind['broker']}\n\n**Nota:** {res_ind['motivo']}")
+                st.info(f"**Destino Sugerido:** {res_ind['broker']}\n\n**Nota:** {res_ind['motivo']}")
             else:
                 st.error("Ticker no válido o sin datos históricos suficientes.")
                 
@@ -120,7 +123,7 @@ with pestana1:
                 st.table(pd.DataFrame(resultados))
 
 # =========================================================
-# PESTAÑA 2: RADAR ALGORÍTMICO (BOT 30K)
+# PESTAÑA 2: RADAR ALGORÍTMICO CON BOTÓN DE ENTRADA REAL
 # =========================================================
 with pestana2:
     st.subheader("🤖 Simulación del Universo de Inversión (65 Líderes)")
@@ -140,14 +143,17 @@ with pestana2:
     lista_exclusiones = [t.strip() for t in exclusiones_input.split(",") if t.strip()]
     
     c1, c2, c3 = st.columns(3)
-    c1.metric("Presupuesto de Arranque", "30.000 €")
-    c2.metric("Efectivo Libre (Bot)", f"{st.session_state.efectivo:,.2f} €")
+    c1.metric("Presupuesto Estrategia", "30.000 €")
+    c2.metric("Efectivo Libre Simulado", f"{st.session_state.efectivo:,.2f} €")
     c3.metric("Posiciones Ocupadas", f"{len(st.session_state.cartera_bot)} / 10")
     
-    if st.button("🔌 Ejecutar Escáner de Mercado", key="btn_run_bot"):
-        reporte = []
+    # Botón principal de ejecución del escáner
+    ejecutar_escaneo = st.button("🔌 Ejecutar Escáner de Mercado Masivo", key="btn_run_bot")
+    
+    if ejecutar_escaneo:
+        st.session_state.oportunidades_detectadas = []
         
-        # Control de diversificación por sectores
+        # Control estricto de diversificación por sectores (Máx 2 por subsector)
         sectores_activos = {}
         for pos in st.session_state.cartera_bot:
             sec = pos["Subsector"]
@@ -164,33 +170,58 @@ with pestana2:
                     continue
                     
                 ans = analizar_activo(ticker)
+                # Si cumple con las condiciones técnicas de COMPRA, se captura
                 if ans and ans["estado"] == "COMPRAR":
-                    st.session_state.cartera_bot.append({
-                        "Ticker": ticker, 
-                        "Subsector": sector, 
-                        "Precio Entrada": f"{ans['precio']:.2f} $", 
-                        "RSI": round(ans['rsi'], 1), 
-                        "Canal Recomendado": ans["broker"]
+                    st.session_state.oportunidades_detectadas.append({
+                        "Ticker": ticker,
+                        "Subsector": sector,
+                        "Precio": ans["precio"],
+                        "RSI": ans["rsi"],
+                        "Broker": ans["broker"],
+                        "Motivo": ans["motivo"]
                     })
-                    st.session_state.efectivo -= 3000
-                    sectores_activos[sector] = sectores_activos.get(sector, 0) + 1
-                    reporte.append({"Operación": f"COMPRA {ticker}", "Subsector": sector, "Vía": ans["broker"], "Técnica": ans["motivo"]})
-                    break
-                    
-        if reporte:
-            st.subheader("📝 Ejecuciones Realizadas en la Sesión")
-            st.table(pd.DataFrame(reporte))
-            
-    st.markdown("---")
-    st.subheader("📊 Composición de la Cartera del Bot")
+                    break # Saltamos al siguiente subsector para asegurar diversificación lineal
+
+    # DESPLIEGUE DE ALERTAS CON OPCIÓN DE ADICIÓN DIRECTA
+    if "oportunidades_detectadas" in st.session_state and st.session_state.oportunidades_detectadas:
+        st.markdown("### 🚨 Oportunidades Técnicas Encontradas Hoy")
+        st.write("Revisa los parámetros técnicos antes de enviarlas a tu sección de órdenes:")
+        
+        for op in st.session_state.oportunidades_detectadas:
+            with st.container():
+                col_info, col_accion = st.columns([4, 1])
+                with col_info:
+                    st.markdown(f"**⚡ COMPRA SUGERIDA: {op['Ticker']}** ({op['Subsector']})")
+                    st.write(f"• Precio: {op['Precio']:.2f}$ | RSI: {op['RSI']:.1f}")
+                    st.write(f"• **Asignación Fiscal:** {op['Broker']}")
+                    st.caption(f"Motivo técnico: {op['Motivo']}")
+                with col_accion:
+                    # Este botón ejecuta la adición a tu radar de compras reales aprobadas
+                    if st.button(f"➕ Añadir {op['Ticker']}", key=f"add_real_{op['Ticker']}"):
+                        if not any(p["Ticker"] == op["Ticker"] for p in st.session_state.cartera_bot):
+                            st.session_state.cartera_bot.append({
+                                "Ticker": op["Ticker"],
+                                "Subsector": op["Subsector"],
+                                "Precio Entrada": f"{op['Precio']:.2f} $",
+                                "RSI": round(op['RSI'], 1),
+                                "Canal Recomendado": op["Broker"]
+                            })
+                            st.session_state.efectivo -= 3000
+                            st.success(f"¡{op['Ticker']} integrada en el panel!")
+                            st.rerun()
+            st.markdown("---")
+
+    st.subheader("📊 Panel de Posiciones del Bot (Simulación Activa)")
     if st.session_state.cartera_bot:
         st.table(pd.DataFrame(st.session_state.cartera_bot))
-        if st.button("🗑️ Liquidar y Reiniciar Cartera Simula"):
+        if st.button("🗑️ Liquidar y Reiniciar Cartera"):
             st.session_state.efectivo = 30000.0
             st.session_state.cartera_bot = []
+            if "oportunidades_detectadas" in st.session_state:
+                st.session_state.oportunidades_detectadas = []
             st.rerun()
     else:
-        st.info("El bot está al 100% en liquidez. Ejecuta el escáner para buscar entradas técnicas.")
+        st.info("El bot está al 100% en liquidez. Pulsa el botón de arriba para rastrear entradas.")
 
 # =========================================================
 # PESTAÑA 3: EDITOR DE LISTAS MANUALES
