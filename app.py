@@ -7,21 +7,13 @@ import numpy as np
 st.set_page_config(page_title="Terminal Financiero", layout="wide")
 
 # =========================================================
-# INICIALIZACIÓN COMPLETA Y DINÁMICA DE LA MEMORIA
+# INICIALIZACIÓN COMPLETA Y SEGURA DE LA MEMORIA (SESSION STATE)
 # =========================================================
 if "listas_seguimiento" not in st.session_state:
     st.session_state.listas_seguimiento = {
-        "Robótica/IA": [
-            "NVDA", "AMD", "QCOM", "INTC", "AVGO", "MRVL", "ADI", "TXN", "MU", "SMCI",
-            "ISRG", "SYK", "ZBH", "MDT", "BSX", "GMED", "TFX",
-            "SYM", "ABB", "SIE.DE", "ROK", "GWW", "FAST", "AZO", "SNA", "GE",
-            "CGNX", "KEYS", "ROV", "PH", "AME", "TDY", "KYCCF",
-            "CDNS", "SNPS", "ANSS", "PTC", "ADSK", "DSY.PA", "SAP.DE",
-            "WOLF", "ON", "NXPI", "MPWR", "MCHP", "IFX.DE", "STM",
-            "ASML", "ASM.AS", "AMAT", "LRCX", "KLAC", "TER", "ENTG", "MKSI", "COHR",
-            "MBLY", "AUR", "LAZR", "APTIV"
-        ],
-        "Tecnología (Manual)": ["TSLA", "AAPL", "MSFT"],
+        "Robótica/IA": ["ISRG", "ABB", "6861.T", "SYM", "SERV", "TER", "6954.T", "SYK", "CGNX", "AUR", "MBLY"],
+        "Tecnología": ["NVDA", "TSLA", "AAPL", "MSFT", "AMD"],
+        "Semicond": ["ASML", "AVGO", "ARM", "SMCI", "MU"]
     }
 
 if "efectivo" not in st.session_state:
@@ -69,8 +61,7 @@ def analizar_activo(ticker, forzar_ing=False):
             estado = "ESPERAR"
             motivo = f"RSI en {rsi:.1f}. Precio extendido o sin momentum claro."
             
-        industry = info.get('industry', 'General')
-        return {"estado": estado, "precio": precio, "rsi": rsi, "yield": dividend_yield, "broker": broker_optimo, "motivo": motivo, "industria": industry}
+        return {"estado": estado, "precio": precio, "rsi": rsi, "yield": dividend_yield, "broker": broker_optimo, "motivo": motivo}
     except:
         return None
 
@@ -80,12 +71,12 @@ def analizar_activo(ticker, forzar_ing=False):
 st.title("🎛️ Centro de Mando Financiero")
 pestana1, pestana2, pestana3 = st.tabs([
     "🔍 Escáner Manual de Listas", 
-    "🤖 Bot Dinámico Robótica 30k",
-    "⚙️ Configuración de Listas del Bot"
+    "🤖 Bot Masivo Robótica 30k",
+    "⚙️ Configuración de Listas"
 ])
 
 # =========================================================
-# PESTAÑA 1: ESCÁNER MANUAL (RESTAURADA COMPROBACIÓN DE LISTAS)
+# PESTAÑA 1: ESCÁNER MANUAL
 # =========================================================
 with pestana1:
     col_individual, col_listas = st.columns(2)
@@ -108,19 +99,14 @@ with pestana1:
                 st.error("No se han encontrado datos. Revisa el ticker.")
                 
     with col_listas:
-        st.subheader("📋 Opción 2: Listas Completas")
-        lista_sel = st.selectbox("Selecciona la lista a escanear:", list(st.session_state.listas_seguimiento.keys()), key="manual_lista")
-        
-        # RESTAURADO: Muestra los componentes en tiempo real en el modo manual al seleccionar la lista
-        acciones_de_la_lista = st.session_state.listas_seguimiento[lista_sel]
-        st.write(f"**Componentes en '{lista_sel}':** {', '.join(acciones_de_la_lista) if acciones_de_la_lista else 'Lista vacía'}")
-        
+        st.subheader("📋 Opción 2: Listas Predeterminadas")
+        lista_sel = st.selectbox("Selecciona la lista:", list(st.session_state.listas_seguimiento.keys()), key="manual_lista")
         btn_listas = st.button("🚀 Ejecutar Análisis de la Lista", key="btn_lista")
         
         if btn_listas:
             st.info(f"Escaneando lista: {lista_sel}...")
             resultados = []
-            for t in acciones_de_la_lista:
+            for t in st.session_state.listas_seguimiento[lista_sel]:
                 res = analizar_activo(t)
                 if res:
                     resultados.append({
@@ -131,12 +117,19 @@ with pestana1:
                 st.table(pd.DataFrame(resultados))
 
 # =========================================================
-# PESTAÑA 2: EL BOT DINÁMICO
+# PESTAÑA 2: EL BOT MASIVO (65 COMPAÑÍAS)
 # =========================================================
 with pestana2:
-    st.header("🤖 Bot de Gestión Activa (Radar Editable)")
-    st.write("Escanea la lista 'Robótica/IA' modificada por ti. Autogestiona 30.000€ distribuidos en un máximo de 10 posiciones.")
-    st.markdown("---")
+    UNIVERSO_EXPANDIDO = {
+        "Cerebro / Procesamiento": ["NVDA", "AMD", "QCOM", "INTC", "AVGO", "MRVL", "ADI", "TXN", "MU", "SMCI"],
+        "Robótica Quirúrgica / Salud": ["ISRG", "SYK", "ZBH", "MDT", "BSX", "GMED", "TFX"],
+        "Automatización / Logística": ["SYM", "ABB", "SIE.DE", "ROK", "GWW", "FAST", "AZO", "SNA", "GE"],
+        "Fotónica / Sensórica / Visión": ["CGNX", "KEYS", "ROV", "PH", "AME", "TDY", "KYCCF"],
+        "Software Industrial / EDA": ["CDNS", "SNPS", "ANSS", "PTC", "ADSK", "DSY.PA", "SAP.DE"],
+        "Semiconductores Potencia / Energía": ["WOLF", "ON", "NXPI", "MPWR", "MCHP", "IFX.DE", "STM"],
+        "Litografía / Equipos Sala Blanca": ["ASML", "ASM.AS", "AMAT", "LRCX", "KLAC", "TER", "ENTG", "MKSI", "COHR"],
+        "Sistemas Autónomos / LiDAR": ["MBLY", "AUR", "LAZR", "APTIV"]
+    }
     
     exclusiones_input = st.text_input("🛡️ Exclusión de Cartera Real (Acciones que ya tienes separadas por comas):", value="", key="bot_excl").upper()
     lista_exclusiones = [t.strip() for t in exclusiones_input.split(",") if t.strip()]
@@ -146,52 +139,38 @@ with pestana2:
     c2.metric("Efectivo Disponible", f"{st.session_state.efectivo:,.2f} €")
     c3.metric("Posiciones Abiertas", f"{len(st.session_state.cartera_bot)} / 10")
     
-    if st.button("🚀 Activar Escáner Diario del Bot", key="btn_run_bot"):
+    if st.button("🚀 Activar Escáner Diario", key="btn_run_bot"):
         reporte_movimientos = []
         conteo_industrias = {}
-        
         for pos in st.session_state.cartera_bot:
             ind = pos["Industria"]
             conteo_industrias[ind] = conteo_industrias.get(ind, 0) + 1
             
-        universo_bot = st.session_state.listas_seguimiento["Robótica/IA"]
-        
-        for ticker in universo_bot:
-            if len(st.session_state.cartera_bot) >= 10 or st.session_state.efectivo < 3000:
-                break
-                
-            if ticker in lista_exclusiones or any(p["Ticker"] == ticker for p in st.session_state.cartera_bot):
+        for industria, tickers in UNIVERSO_EXPANDIDO.items():
+            if conteo_industrias.get(industria, 0) >= 2:
                 continue
                 
-            ans = analizar_activo(ticker)
-            if ans and ans["estado"] == "COMPRAR":
-                industria_activo = ans["industria"]
-                
-                if conteo_industrias.get(industria_activo, 0) >= 2:
+            for ticker in tickers:
+                if len(st.session_state.cartera_bot) >= 10 or st.session_state.efectivo < 3000:
+                    break
+                if ticker in lista_exclusiones or any(p["Ticker"] == ticker for p in st.session_state.cartera_bot):
                     continue
                     
-                st.session_state.cartera_bot.append({
-                    "Ticker": ticker, 
-                    "Industria": industria_activo, 
-                    "Precio Entrada": f"{ans['precio']:.2f} $", 
-                    "RSI": round(ans['rsi'], 1), 
-                    "Bróker Destino": ans["broker"]
-                })
-                st.session_state.efectivo -= 3000
-                conteo_industrias[industria_activo] = conteo_industrias.get(industria_activo, 0) + 1
-                
-                reporte_movimientos.append({
-                    "Acción": f"COMPRADO {ticker}", 
-                    "Subsector": industria_activo, 
-                    "Destino Recomendado": ans["broker"], 
-                    "Motivo Técnico": ans["motivo"]
-                })
-                
+                ans = analizar_activo(ticker)
+                if ans and ans["estado"] == "COMPRAR":
+                    st.session_state.cartera_bot.append({
+                        "Ticker": ticker, "Industria": industria, "Precio Entrada": f"{ans['precio']:.2f} $", "RSI": round(ans['rsi'], 1), "Bróker Destino": ans["broker"]
+                    })
+                    st.session_state.efectivo -= 3000
+                    conteo_industrias[industria] = conteo_industrias.get(industria, 0) + 1
+                    reporte_movimientos.append({
+                        "Acción": f"COMPRADO {ticker}", "Subsector": industria, "Destino Recomendado": ans["broker"], "Motivo Técnico": ans["motivo"]
+                    })
+                    break
+                    
         if reporte_movimientos:
             st.subheader("📝 Bitácora de Operaciones de Hoy")
             st.table(pd.DataFrame(reporte_movimientos))
-        else:
-            st.info("El escáner ha revisado tu lista actual y ninguna nueva cumple las condiciones de entrada hoy.")
             
     st.markdown("---")
     st.subheader("📊 Estado Actual de la Cartera del Bot")
@@ -205,14 +184,38 @@ with pestana2:
         st.write("Cartera en 100% liquidez.")
 
 # =========================================================
-# PESTAÑA 3: GESTOR DE LISTAS (MÁXIMA FLEXIBILIDAD)
+# PESTAÑA 3: GESTOR DE LISTAS MANUALES
 # =========================================================
 with pestana3:
-    st.header("⚙️ Configuración y Modificación del Universo del Bot")
-    st.write("Desde aquí controlas los componentes que el bot y el escáner manual rastrearán. Cualquier cambio impacta en ambas herramientas.")
+    st.header("⚙️ Gestor de Listas de Seguimiento")
     
-    lista_a_modificar = st.selectbox("Selecciona la lista a gestionar (Elige 'Robótica/IA' para alterar el Bot):", list(st.session_state.listas_seguimiento.keys()), key="edit_lista")
+    lista_a_modificar = st.selectbox("Selecciona la lista a gestionar:", list(st.session_state.listas_seguimiento.keys()), key="edit_lista")
     acciones_actuales = st.session_state.listas_seguimiento[lista_a_modificar]
     
-    st.write(f"**Valores monitorizados en este momento ({len(acciones_actuales)}):**")
-    st.info(", ".join(acciones_actual
+    if acciones_actuales:
+        st.info(", ".join(acciones_actuales))
+    else:
+        st.warning("Lista vacía")
+    
+    st.markdown("---")
+    col_add, col_del = st.columns(2)
+    
+    with col_add:
+        st.markdown("### ➕ Añadir Ticker")
+        nuevo_ticker = st.text_input("Escribe el ticker:", value="", key="add_t").upper().strip()
+        if st.button("✅ Confirmar Añadir", key="btn_add"):
+            if nuevo_ticker and nuevo_ticker not in acciones_actuales:
+                st.session_state.listas_seguimiento[lista_a_modificar].append(nuevo_ticker)
+                st.success(f"{nuevo_ticker} añadido.")
+                st.rerun()
+                
+    with col_del:
+        st.markdown("### ❌ Eliminar Ticker")
+        if acciones_actuales:
+            ticker_a_borrar = st.selectbox("Elige cuál quitar:", acciones_actuales, key="del_t")
+            if st.button("🗑️ Confirmar Borrado", key="btn_del"):
+                st.session_state.listas_seguimiento[lista_a_modificar].remove(ticker_a_borrar)
+                st.success(f"{ticker_a_borrar} eliminado.")
+                st.rerun()
+        else:
+            st.write("No hay acciones para eliminar.")
