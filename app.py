@@ -44,19 +44,40 @@ def analizar_activo(ticker, regla_broker="Bolero/Revolut"):
         return None
 
 # =========================================================
-# NUEVOS BOTONES SUPERIORES (PESTAÑAS CENTRALES EN PANTALLA)
+# BOTONES SUPERIORES (PESTAÑAS CENTRALES EN PANTALLA)
 # =========================================================
 st.title("🎛️ Centro de Mando Financiero")
 pestana1, pestana2 = st.tabs(["🔍 Escáner Manual de Listas", "🤖 Bot Autónomo Robótica 30k"])
 
 # ==========================================
-# PESTAÑA 1: EL ESCÁNER MANUAL (ORIGINAL)
+# PESTAÑA 1: EL ESCÁNER MANUAL (COMPLETO)
 # ==========================================
 with pestana1:
     st.header("🔍 Escáner Manual de Mercado")
-    st.write("Revisa tus listas de seguimiento predeterminadas y analiza puntos de entrada.")
+    st.write("Analiza tus listas predeterminadas o busca un activo individual en tiempo real.")
     
-    # Listas originales restauradas por completo
+    # 1. BUSCADOR INDIVIDUAL (PUESTO ARRIBA DEL TODO PARA TU COMODIDAD)
+    st.subheader("🔍 Opción A: Análisis de Acción Individual")
+    ticker_individual = st.text_input("Escribe el ticker de la acción y pulsa INTRO (ej: TSLA, AAPL, ASML):", value="").upper().strip()
+    
+    # Analiza automáticamente en cuanto escribes, sin necesidad de botón
+    if ticker_individual:
+        st.info(f"Analizando {ticker_individual} en tiempo real...")
+        res_ind = analizar_activo(ticker_individual)
+        if res_ind:
+            st.success(f"**Análisis Individual para: {ticker_individual}**")
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Precio Actual", f"{res_ind['precio']:.2f} $")
+            col2.metric("RSI (14 días)", f"{res_ind['rsi']:.1f}")
+            col3.metric("Estado Técnico", res_ind['estado'])
+            st.info(f"**Nota del analista:** {res_ind['motivo']}")
+        else:
+            st.error("No se han encontrado datos para ese ticker. Asegúrate de que cotiza en EEUU o Europa y está bien escrito.")
+            
+    st.markdown("---")
+    
+    # 2. ANALIZAR LISTAS COMPLETAS
+    st.subheader("📋 Opción B: Escanear Listas Predeterminadas")
     listas_seguimiento = {
         "Robótica/IA": ["ISRG", "ABB", "6861.T", "SYM", "SERV", "TER", "6954.T", "SYK", "CGNX", "AUR", "MBLY"],
         "Tecnología": ["NVDA", "TSLA", "AAPL", "MSFT", "AMD"],
@@ -83,7 +104,6 @@ with pestana2:
     st.header("🤖 Tu Asesor Autónomo de Inversión")
     st.write("Estrategia de Gestión Activa centrada en Robótica y su cadena de valor física (Excluida IA Pura).")
     
-    # 10 Slots limpios reorientados a hardware de robótica y potencia
     ESTRUCTURA_CARTERA = {
         "Slot 1: Robótica Quirúrgica/Médica": {"tickers": ["ISRG", "SYK"], "broker": "Bolero/Revolut"},
         "Slot 2: Automatización y Almacén": {"tickers": ["SYM", "ABB"], "broker": "ING (0% Div)"},
@@ -97,7 +117,6 @@ with pestana2:
         "Slot 10: Componentes Críticos/Líderes": {"tickers": ["AMAT", "LRCX"], "broker": "Bolero/Revolut"}
     }
     
-    # El filtro de exclusión real ahora está integrado aquí abajo para que no se pierda en ningún menú lateral
     st.markdown("### 🛡️ Filtro de Cartera Real")
     exclusiones_input = st.text_input("Introduce los tickers que YA tienes en la realidad (ej: NVDA, ASML):", value="").upper()
     lista_exclusiones = [t.strip() for t in exclusiones_input.split(",") if t.strip()]
