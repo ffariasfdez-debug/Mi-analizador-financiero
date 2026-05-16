@@ -5,17 +5,25 @@ import time
 from datetime import datetime
 import pytz
 
-# 1. CONFIGURACIÓN DE LA PÁGINA
-st.set_page_config(page_title="Terminal Financiero Autónomo", layout="wide")
+# 1. CONFIGURACIÓN DE LA PÁGINA (ADAPTADA A MÓVIL Y WEB)
+st.set_page_config(page_title="Terminal Financiero Integral", layout="wide")
 
-# Estilo para forzar que las tablas ocupen todo su espacio sin scrolls internos molestos
+# Estilo para forzar que las tablas se desplieguen enteras sin cortes en pantallas pequeñas
 st.markdown("""
     <style>
     .stDataFrame div[data-testid="stTable"] {overflow: visible !important;}
+    div[data-testid="stMetricValue"] {font-size: 1.8rem !important;}
     </style>
 """, unsafe_allow_html=True)
 
-# 2. INICIALIZACIÓN DE LA MEMORIA (SESSION STATE)
+# 2. INICIALIZACIÓN DE LA MEMORIA DEL SISTEMA (SESSION STATE)
+if "listas_seguimiento" not in st.session_state:
+    st.session_state.listas_seguimiento = {
+        "Robótica/IA": ["ISRG", "ABB", "6861.T", "SYM", "SERV", "TER", "6954.T", "SYK", "CGNX", "AUR", "MBLY"],
+        "Tecnología": ["NVDA", "TSLA", "AAPL", "MSFT", "AMD"],
+        "Semicond": ["ASML", "AVGO", "ARM", "SMCI", "MU"]
+    }
+
 if "efectivo" not in st.session_state:
     st.session_state.efectivo = 30000.0
 
@@ -25,8 +33,8 @@ if "cartera_bot" not in st.session_state:
 if "manual_tickers" not in st.session_state:
     st.session_state.manual_tickers = []
 
-# UNIVERSO DE INVERSIÓN (65 Líderes estructurales)
-UNIVERSO_BASE = [
+# UNIVERSO BASE DEL BOT AUTÓNOMO (65 Líderes estructurales)
+UNIVERSO_BASE_BOT = [
     "NVDA", "AMD", "QCOM", "INTC", "AVGO", "MRVL", "ADI", "TXN", "MU", "SMCI",
     "ISRG", "SYK", "ZBH", "MDT", "BSX", "GMED", "TFX", "SYM", "ABB", "SIE.DE",
     "ROK", "GWW", "FAST", "AZO", "SNA", "GE", "CGNX", "KEYS", "ROV", "PH",
@@ -35,35 +43,34 @@ UNIVERSO_BASE = [
     "LRCX", "KLAC", "TER", "ENTG", "MKSI", "COHR", "MBLY", "AUR", "LAZR", "APTIV"
 ]
 
-# 3. DETECTOR MULTI-HORARIO INTELIGENTE (EE. UU. vs EUROPA)
+# 3. DETECTOR DE HORARIOS INTERNACIONALES (EE. UU. vs EUROPA)
 def comprobar_horario_mercado(ticker):
-    # Determinar zona horaria según el sufijo del ticker de yFinance
     es_europeo = any(ticker.endswith(sufijo) for sufijo in [".DE", ".PA", ".AS", ".MI", ".MC"])
     
     if es_europeo:
-        tz = pytz.timezone('Europe/Madrid') # Horario Central Europeo (CET/CEST)
+        tz = pytz.timezone('Europe/Madrid')
         hora_local = datetime.now(tz)
         inicio = hora_local.replace(hour=9, minute=0, second=0, microsecond=0)
         cierre = hora_local.replace(hour=17, minute=30, second=0, microsecond=0)
     else:
-        tz = pytz.timezone('America/New_York') # Horario de Wall Street (EST/EDT)
+        tz = pytz.timezone('America/New_York')
         hora_local = datetime.now(tz)
         inicio = hora_local.replace(hour=9, minute=30, second=0, microsecond=0)
         cierre = hora_local.replace(hour=16, minute=0, second=0, microsecond=0)
         
-    # Validar si es fin de semana (Sábado=5, Domingo=6)
     if hora_local.weekday() >= 5:
         return False, "CERRADO (Fin de semana)"
         
     if inicio <= hora_local <= cierre:
-        return True, "ABIERTO (Horario Regular)"
+        return True, "ABIERTO"
     else:
-        return False, "CERRADO (Fuera de hora operativa)"
+        return False, "CERRADO (Fuera de hora)"
 
-# 4. MOTOR TÉCNICO DE ANÁLISIS
-def bot_experto_analisis(ticker):
+# 4. MOTOR TÉCNICO DE ANÁLISIS QUANT (COMÚN)
+def analizar_activo(ticker):
     try:
         tk = yf.Ticker(ticker)
+        info = tk.info
         df = tk.history(period="2y")
         if df.empty or len(df) < 200:
             return None
@@ -84,6 +91,10 @@ def bot_experto_analisis(ticker):
         maximo = df['High'].iloc[-1]
         minimo = df['Low'].iloc[-1]
         
+        # Filtro fiscal por dividendo
+        dividend_yield = info.get('dividendYield', 0) or 0
+        broker_optimo = "ING España (0% Div)" if dividend_yield == 0 else "Bolero / Revolut"
+        
         se_compra = precio_actual > sma200 and 45 <= rsi <= 55
         
         return {
@@ -94,105 +105,108 @@ def bot_experto_analisis(ticker):
             "min": minimo,
             "vol": volumen,
             "rsi": rsi,
-            "decision": "COMPRAR" if se_compra else "ESPERAR"
+            "sma200": sma200,
+            "broker": broker_optimo,
+            "decision": "COMPRAR" if se_compra else "ESPERAR",
+            "motivo": f"RSI en {rsi:.1f} sobre SMA200." if se_compra else f"RSI en {rsi:.1f} fuera de rango."
         }
     except:
         return None
 
-# 5. INTERFAZ GRÁFICA
-st.title("🤖 Terminal de Inversión 100% Algorítmico")
-st.caption("Estrategia automatizada orientada a acumulación y crecimiento estructural (Horizonte 4 años).")
+# =========================================================
+# 5. MAQUETACIÓN DE LAS 3 PESTAÑAS DEL CENTRO DE MANDO
+# =========================================================
+st.title("🎛️ Centro de Mando Financiero")
 
-# PANEL LATERAL
-with st.sidebar:
-    st.header("⚙️ Panel de Control")
-    cartera_real_input = st.text_input("🛡️ Acciones en tu cartera real (Ej: NVDA, ASML):", value="").upper()
+pestana1, pestana2, pestana3 = st.tabs([
+    "🔍 Escáner Manual de Listas", 
+    "🤖 Bot Masivo Automático 30k",
+    "⚙️ Configuración de Listas"
+])
+
+# ---------------------------------------------------------
+# PESTAÑA 1: TU APLICACIÓN MANUAL ORIGINAL
+# ---------------------------------------------------------
+with pestana1:
+    st.subheader("🔍 Análisis Técnico Manual de Mercado")
+    col_individual, col_listas = st.columns(2)
+    
+    with col_individual:
+        st.markdown("### 📊 Opción 1: Ticker Único")
+        ticker_individual = st.text_input("Introduce un Ticker individual:", value="", key="manual_ind").upper().strip()
+        if st.button("Analizar Ticker Único", key="btn_ind"):
+            if ticker_individual:
+                res_ind = analizar_activo(ticker_individual)
+                if res_ind:
+                    st.success(f"**Análisis de {ticker_individual}:**")
+                    c_p, c_r, c_e = st.columns(3)
+                    c_p.metric("Precio", f"{res_ind['precio']:.2f} $")
+                    c_r.metric("RSI (14)", f"{res_ind['rsi']:.1f}")
+                    c_e.metric("Filtro", res_ind['decision'])
+                    st.info(f"**Filtro Fiscal:** `{res_ind['broker']}`\n\n**Nota Técnica:** {res_ind['motivo']}")
+                else:
+                    st.error("No se han encontrado datos para este Ticker.")
+                    
+    with col_listas:
+        st.markdown("### 📋 Opción 2: Escanear Tus Listas")
+        lista_sel = st.selectbox("Elige una de tus listas guardadas:", list(st.session_state.listas_seguimiento.keys()), key="manual_lista")
+        if st.button("🚀 Iniciar Rastreo de Lista", key="btn_lista"):
+            resultados = []
+            with st.spinner("Escaneando lista seleccionada..."):
+                for t in st.session_state.listas_seguimiento[lista_sel]:
+                    res = analizar_activo(t)
+                    if res:
+                        resultados.append({
+                            "Ticker": t, 
+                            "Precio": f"{res['precio']:.2f}$", 
+                            "RSI": round(res['rsi'], 1), 
+                            "Filtro": res['decision'], 
+                            "Canal Óptimo": res['broker'], 
+                            "Nota Técnica": res['motivo']
+                        })
+            if resultados:
+                st.dataframe(pd.DataFrame(resultados), use_container_width=True, hide_index=True)
+
+# ---------------------------------------------------------
+# PESTAÑA 2: EL BOT EXPERTO 100% AUTÓNOMO
+# ---------------------------------------------------------
+with pestana2:
+    st.subheader("🤖 Algoritmo Autónomo del Universo Expandido")
+    
+    # Panel de exclusiones por si ya tienes acciones compradas en real
+    cartera_real_input = st.text_input("🛡️ Acciones en tu cartera real a excluir del radar (Ej: NVDA):", value="", key="bot_excl_input").upper()
     exclusiones_reales = [t.strip() for t in cartera_real_input.split(",") if t.strip()]
     
-    st.markdown("---")
-    st.subheader("➕ Forzar Ticker al Radar")
-    ticker_manual = st.text_input("Escribe un ticker nuevo:", value="").upper().strip()
-    if st.button("Añadir al Radar de Rastreo"):
-        if ticker_manual and ticker_manual not in st.session_state.manual_tickers:
-            st.session_state.manual_tickers.append(ticker_manual)
-            st.success(f"{ticker_manual} añadido.")
+    # Combinar listas automáticas
+    UNIVERSO_TOTAL = list(set(UNIVERSO_BASE_BOT + st.session_state.manual_tickers))
+    UNIVERSO_FILTRADO = [t for t in UNIVERSO_TOTAL if t not in exclusiones_reales]
+    
+    col_r1, col_r2 = st.columns([4, 1])
+    with col_r1:
+        st.caption(f"📡 Rastreador en Tiempo Real ({len(UNIVERSO_FILTRADO)} activos monitorizados al instante).")
+    with col_r2:
+        if st.button("🔄 Refrescar Precios", key="refresh_bot"):
             st.rerun()
 
-# Combinación y limpieza de listas
-UNIVERSO_TOTAL = list(set(UNIVERSO_BASE + st.session_state.manual_tickers))
-UNIVERSO_FILTRADO = [t for t in UNIVERSO_TOTAL if t not in exclusiones_reales]
+    # Procesar mercado
+    radar_data = []
+    with st.spinner("Sincronizando cotizaciones con los servidores..."):
+        for ticker in UNIVERSO_FILTRADO:
+            data = analizar_activo(ticker)
+            if data:
+                abierto, estado_txt = comprobar_horario_mercado(ticker)
+                data["mercado_abierto"] = abierto
+                data["estado_mercado"] = estado_txt
+                radar_data.append(data)
 
-st.subheader(f"📡 Radar Global de Rastreo ({len(UNIVERSO_FILTRADO)} Activos)")
-if st.button("🔄 Refrescar Pantalla y Cotizaciones"):
-    st.rerun()
-
-# Analizar mercado y pintar el radar estilo Investing
-radar_data = []
-with st.spinner("Analizando ecosistema financiero internacional en tiempo real..."):
-    for ticker in UNIVERSO_FILTRADO:
-        data = bot_experto_analisis(ticker)
-        if data:
-            # Añadimos al diccionario si el mercado específico de esta acción está abierto ahora mismo
-            abierto, estado_txt = comprobar_horario_mercado(ticker)
-            data["mercado_abierto"] = abierto
-            data["estado_mercado"] = estado_txt
-            radar_data.append(data)
-
-if radar_data:
-    df_radar = pd.DataFrame(radar_data)
-    
-    df_investing = pd.DataFrame({
-        "Ticker": df_radar["ticker"],
-        "Último ($/€)": df_radar["precio"].map("{:,.2f}".format),
-        "Var. %": df_radar["var"].map("{:+.2f}%".format),
-        "Máx": df_radar["max"].map("{:,.2f}".format),
-        "Mín": df_radar["min"].map("{:,.2f}".format),
-        "Volumen": df_radar["vol"].map("{:,.0f}".format),
-        "RSI (14)": df_radar["rsi"].map("{:,.1f}".format),
-        "Mercado": df_radar["estado_mercado"],
-        "Filtro Técnico": df_radar["decision"]
-    }).sort_values(by="Ticker")
-    
-    # Despliegue total de la lista en pantalla sin recortes de scroll
-    altura_dinamica = min(len(df_investing) * 36 + 40, 2500)
-    st.dataframe(df_investing, use_container_width=True, hide_index=True, height=altura_dinamica)
-    
-    # EJECUCIÓN OPERATIVA CRONOMETRADA INDEPENDIENTE POR ACTIVO
-    for operativo in radar_data:
-        if operativo["decision"] == "COMPRAR" and operativo["mercado_abierto"]:
-            ya_comprada = any(pos["Ticker"] == operativo["ticker"] for pos in st.session_state.cartera_bot)
-            
-            if not ya_comprada and len(st.session_state.cartera_bot) < 10 and st.session_state.efectivo >= 3000:
-                st.session_state.cartera_bot.append({
-                    "Fecha/Hora (Local)": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "Ticker": operativo["ticker"],
-                    "Precio Ejecución": f"{operativo['precio']:.2f}",
-                    "Capital Invertido": "3.000 €",
-                    "RSI Entrada": round(operativo["rsi"], 1),
-                    "Estrategia": "Acumulación 4A"
-                })
-                st.session_state.efectivo -= 3000
-                st.toast(f"🤖 Bot ejecutó COMPRA de {operativo['ticker']} en su mercado abierto.")
-                st.rerun()
-else:
-    st.error("Error al sincronizar con los servidores de datos.")
-
-st.markdown("---")
-
-# EL "EXCEL" DE OPERACIONES
-st.subheader("📈 Registro de Operaciones y Cartera del Bot (Tu Excel)")
-col_m1, col_m2, col_m3 = st.columns(3)
-col_m1.metric("Presupuesto Inicial", "30.000 €")
-col_m2.metric("Líquido en Caja Ficticia", f"{st.session_state.efectivo:,.2f} €")
-col_m3.metric("Posiciones Totales", f"{len(st.session_state.cartera_bot)} / 10")
-
-if st.session_state.cartera_bot:
-    df_excel = pd.DataFrame(st.session_state.cartera_bot)
-    st.table(df_excel)
-    
-    if st.button("🗑️ Reiniciar Historial de Operaciones"):
-        st.session_state.efectivo = 30000.0
-        st.session_state.cartera_bot = []
-        st.rerun()
-else:
-    st.info("El bot monitoriza el mercado global en liquidez, respetando las aperturas oficiales.")
+    if radar_data:
+        df_radar = pd.DataFrame(radar_data)
+        
+        # Tabla Formato Investing
+        df_investing = pd.DataFrame({
+            "Ticker": df_radar["ticker"],
+            "Último": df_radar["precio"].map("{:,.2f}".format),
+            "Var. %": df_radar["var"].map("{:+.2f}%".format),
+            "Máx": df_radar["max"].map("{:,.2f}".format),
+            "Mín": df_radar["min"].map("{:,.2f}".format),
+            "Volumen": df_radar["vol"].map("{:,.0
