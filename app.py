@@ -3,8 +3,8 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-# Configuración de página con el menú lateral forzado a estar abierto por si acaso
-st.set_page_config(page_title="Terminal Financiero", layout="wide", initial_sidebar_state="expanded")
+# Configuración base obligatoria
+st.set_page_config(page_title="Terminal Financiero", layout="wide")
 
 # --- CÓDIGO COMÚN: ANALÍTICA TÉCNICA ---
 def analizar_activo(ticker, regla_broker="Bolero/Revolut"):
@@ -19,14 +19,12 @@ def analizar_activo(ticker, regla_broker="Bolero/Revolut"):
         dividend_yield = info.get('dividendYield', 0)
         if dividend_yield is None: dividend_yield = 0
         
-        # Filtro estricto para ING: 0% dividendos obligatorio
         if "ING" in regla_broker and dividend_yield > 0:
             return {"estado": "DESCARTADO", "motivo": "Filtro ING: Paga dividendos."}
             
         precio = df['Close'].iloc[-1]
         sma200 = df['Close'].rolling(window=200).mean().iloc[-1]
         
-        # Calcular RSI
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -34,55 +32,49 @@ def analizar_activo(ticker, regla_broker="Bolero/Revolut"):
         
         if precio > sma200 and 45 <= rsi <= 55:
             estado = "COMPRAR"
-            motivo = f"Punto óptimo. RSI sano ({rsi:.1f}) y tendencia alcista a largo plazo."
+            motivo = f"Punto óptimo. RSI sano ({rsi:.1f}) y tendencia alcista."
         else:
             estado = "ESPERAR"
-            motivo = "Precio extendido o sin fuerza clara de momentum."
+            motivo = "Precio extendido o sin fuerza."
             
         return {"estado": estado, "precio": precio, "rsi": rsi, "yield": dividend_yield, "motivo": motivo}
     except:
         return None
 
 # =========================================================
-# BOTONES SUPERIORES (PESTAÑAS CENTRALES EN PANTALLA)
+# CREACIÓN DE LAS DOS PESTAÑAS PRINCIPALES (ARRIBA DEL TODO)
 # =========================================================
 st.title("🎛️ Centro de Mando Financiero")
 pestana1, pestana2 = st.tabs(["🔍 Escáner Manual de Listas", "🤖 Bot Autónomo Robótica 30k"])
 
-# ==========================================
-# PESTAÑA 1: EL ESCÁNER MANUAL (REORGANIZADO)
-# ==========================================
+# =========================================================
+# CONTENIDO DE LA PESTAÑA 1: ESCÁNER MANUAL
+# =========================================================
 with pestana1:
     st.header("🔍 Escáner Manual de Mercado")
-    st.write("Elige si prefieres analizar una acción suelta o una de tus listas fijas de seguimiento.")
+    st.write("Analiza una acción suelta o revisa tus listas fijas de seguimiento.")
     st.markdown("---")
     
-    # Creamos dos columnas para separar visualmente las dos herramientas por completo
     col_individual, col_listas = st.columns(2)
     
-    # --- COLUMNA IZQUIERDA: BÚSQUEDA INDIVIDUAL ---
     with col_individual:
         st.subheader("🔍 Opción 1: Análisis Individual")
-        ticker_individual = st.text_input("Escribe el ticker de la acción (ej: TSLA, AAPL, ASML):", value="", key="txt_ind").upper().strip()
-        btn_individual = st.button("📊 Analizar esta Acción Solamente")
+        ticker_individual = st.text_input("Escribe el ticker (ej: TSLA, AAPL):", value="", key="input_manual_ind").upper().strip()
+        btn_individual = st.button("📊 Analizar esta Acción Solamente", key="btn_manual_ind")
         
-        # Solo se ejecuta si el usuario pulsa el botón de esta columna o da a Intro en la caja
-        if ticker_individual and (btn_individual or ticker_individual != ""):
-            # Esta condición evita que salte el análisis vacío al cargar la página
-            if btn_individual:
-                st.info(f"Analizando {ticker_individual} en tiempo real...")
-                res_ind = analizar_activo(ticker_individual)
-                if res_ind:
-                    st.success(f"**Resultado para: {ticker_individual}**")
-                    c_p, c_r, c_e = st.columns(3)
-                    c_p.metric("Precio Actual", f"{res_ind['precio']:.2f} $")
-                    c_r.metric("RSI (14 días)", f"{res_ind['rsi']:.1f}")
-                    c_e.metric("Estado Técnico", res_ind['estado'])
-                    st.info(f"**Nota:** {res_ind['motivo']}")
-                else:
-                    st.error("No se han encontrado datos. Revisa si el ticker es correcto.")
-                    
-    # --- COLUMNA DERECHA: ESCÁNER DE LISTAS ---
+        if btn_individual and ticker_individual:
+            st.info(f"Analizando {ticker_individual}...")
+            res_ind = analizar_activo(ticker_individual)
+            if res_ind:
+                st.success(f"**Resultado para: {ticker_individual}**")
+                c_p, c_r, c_e = st.columns(3)
+                c_p.metric("Precio Actual", f"{res_ind['precio']:.2f} $")
+                c_r.metric("RSI (14 días)", f"{res_ind['rsi']:.1f}")
+                c_e.metric("Estado Técnico", res_ind['estado'])
+                st.info(f"**Nota:** {res_ind['motivo']}")
+            else:
+                st.error("No se han encontrado datos. Revisa el ticker.")
+                
     with col_listas:
         st.subheader("📋 Opción 2: Listas Predeterminadas")
         listas_seguimiento = {
@@ -90,12 +82,11 @@ with pestana1:
             "Tecnología": ["NVDA", "TSLA", "AAPL", "MSFT", "AMD"],
             "Semicond": ["ASML", "AVGO", "ARM", "SMCI", "MU"]
         }
-        lista_sel = st.selectbox("Selecciona qué lista quieres revisar:", list(listas_seguimiento.keys()))
-        btn_listas = st.button("🚀 Ejecutar Análisis de la Lista")
+        lista_sel = st.selectbox("Selecciona la lista:", list(listas_seguimiento.keys()), key="select_manual_lista")
+        btn_listas = st.button("🚀 Ejecutar Análisis de la Lista", key="btn_manual_lista")
         
-        # Solo se ejecuta si se pulsa el botón de esta columna
         if btn_listas:
-            st.info(f"Escaneando la lista completa: {lista_sel}...")
+            st.info(f"Escaneando lista: {lista_sel}...")
             resultados = []
             for t in listas_seguimiento[lista_sel]:
                 res = analizar_activo(t)
@@ -106,12 +97,13 @@ with pestana1:
                     })
             st.table(pd.DataFrame(resultados))
 
-# ==========================================
-# PESTAÑA 2: EL BOT AUTÓNOMO DE 30K (ROBÓTICA)
-# ==========================================
+# =========================================================
+# CONTENIDO DE LA PESTAÑA 2: BOT AUTÓNOMO 30K
+# =========================================================
 with pestana2:
-    st.header("🤖 Tu Asesor Autónomo de Inversión")
-    st.write("Estrategia de Gestión Activa centrada en Robótica y su cadena de valor física (Excluida IA Pura).")
+    st.header("🤖 Bot Autónomo de Inversión (Ecosistema Robótica)")
+    st.write("Gestión simulada de 30.000€ centrada en el hardware y cadena de valor de la Robótica.")
+    st.markdown("---")
     
     ESTRUCTURA_CARTERA = {
         "Slot 1: Robótica Quirúrgica/Médica": {"tickers": ["ISRG", "SYK"], "broker": "Bolero/Revolut"},
@@ -126,13 +118,13 @@ with pestana2:
         "Slot 10: Componentes Críticos/Líderes": {"tickers": ["AMAT", "LRCX"], "broker": "Bolero/Revolut"}
     }
     
-    st.markdown("### 🛡️ Filtro de Cartera Real")
-    exclusiones_input = st.text_input("Introduce los tickers que YA tienes en la realidad (ej: NVDA, ASML):", value="").upper()
+    st.subheader("🛡️ Filtro de Cartera Real")
+    exclusiones_input = st.text_input("Introduce los tickers que YA tienes en la realidad (separados por comas):", value="", key="input_bot_exclusiones").upper()
     lista_exclusiones = [t.strip() for t in exclusiones_input.split(",") if t.strip()]
     
     if lista_exclusiones:
-        st.warning(f"Omitiendo de los análisis automáticos: {', '.join(lista_exclusiones)}")
-    
+        st.warning(f"Omitiendo de las compras del bot: {', '.join(lista_exclusiones)}")
+        
     if 'efectivo' not in st.session_state:
         st.session_state.efectivo = 30000.0
         st.session_state.cartera = {}
@@ -143,7 +135,7 @@ with pestana2:
     c2.metric("Efectivo Disponible", f"{st.session_state.efectivo:,.2f} €")
     c3.metric("Slots Ocupados", f"{len(st.session_state.cartera)} / 10")
     
-    if st.button("🚀 Activar Escáner Diario del Bot"):
+    if st.button("🚀 Activar Escáner Diario del Bot", key="btn_activar_bot"):
         reporte_movimientos = []
         for slot, configuracion in ESTRUCTURA_CARTERA.items():
             if slot in st.session_state.cartera: continue
@@ -187,4 +179,4 @@ with pestana2:
     if st.session_state.cartera:
         st.table(pd.DataFrame.from_dict(st.session_state.cartera, orient='index'))
     else:
-        st.write("Tu cartera está en 100% liquidez esperando el momento óptimo de entrada.")
+        st.write("Tu cartera está en 100% liquidez esperando oportunidades.")
