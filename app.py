@@ -3,8 +3,16 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-# Configuración base obligatoria
+# Configuración de página
 st.set_page_config(page_title="Terminal Financiero", layout="wide")
+
+# --- INITIALIZATION OF LISTS IN SESSION STATE (Para que sean editables) ---
+if "listas_seguimiento" not in st.session_state:
+    st.session_state.listas_seguimiento = {
+        "Robótica/IA": ["ISRG", "ABB", "6861.T", "SYM", "SERV", "TER", "6954.T", "SYK", "CGNX", "AUR", "MBLY"],
+        "Tecnología": ["NVDA", "TSLA", "AAPL", "MSFT", "AMD"],
+        "Semicond": ["ASML", "AVGO", "ARM", "SMCI", "MU"]
+    }
 
 # --- CÓDIGO COMÚN: ANALÍTICA TÉCNICA ---
 def analizar_activo(ticker, regla_broker="Bolero/Revolut"):
@@ -42,10 +50,14 @@ def analizar_activo(ticker, regla_broker="Bolero/Revolut"):
         return None
 
 # =========================================================
-# CREACIÓN DE LAS DOS PESTAÑAS PRINCIPALES (ARRIBA DEL TODO)
+# CREACIÓN DE LAS TRES PESTAÑAS PRINCIPALES
 # =========================================================
 st.title("🎛️ Centro de Mando Financiero")
-pestana1, pestana2 = st.tabs(["🔍 Escáner Manual de Listas", "🤖 Bot Autónomo Robótica 30k"])
+pestana1, pestana2, pestana3 = st.tabs([
+    "🔍 Escáner Manual de Listas", 
+    "🤖 Bot Autónomo Robótica 30k",
+    "⚙️ Configuración de Listas"
+])
 
 # =========================================================
 # CONTENIDO DE LA PESTAÑA 1: ESCÁNER MANUAL
@@ -77,25 +89,23 @@ with pestana1:
                 
     with col_listas:
         st.subheader("📋 Opción 2: Listas Predeterminadas")
-        listas_seguimiento = {
-            "Robótica/IA": ["ISRG", "ABB", "6861.T", "SYM", "SERV", "TER", "6954.T", "SYK", "CGNX", "AUR", "MBLY"],
-            "Tecnología": ["NVDA", "TSLA", "AAPL", "MSFT", "AMD"],
-            "Semicond": ["ASML", "AVGO", "ARM", "SMCI", "MU"]
-        }
-        lista_sel = st.selectbox("Selecciona la lista:", list(listas_seguimiento.keys()), key="select_manual_lista")
+        lista_sel = st.selectbox("Selecciona la lista:", list(st.session_state.listas_seguimiento.keys()), key="select_manual_lista")
         btn_listas = st.button("🚀 Ejecutar Análisis de la Lista", key="btn_manual_lista")
         
         if btn_listas:
             st.info(f"Escaneando lista: {lista_sel}...")
             resultados = []
-            for t in listas_seguimiento[lista_sel]:
+            for t in st.session_state.listas_seguimiento[lista_sel]:
                 res = analizar_activo(t)
                 if res:
                     resultados.append({
                         "Ticker": t, "Precio": f"{res['precio']:.2f}$", 
                         "RSI": round(res['rsi'], 1), "Estado": res['estado'], "Nota": res['motivo']
                     })
-            st.table(pd.DataFrame(resultados))
+            if resultados:
+                st.table(pd.DataFrame(resultados))
+            else:
+                st.warning("Esta lista está vacía actualmente.")
 
 # =========================================================
 # CONTENIDO DE LA PESTAÑA 2: BOT AUTÓNOMO 30K
@@ -180,3 +190,48 @@ with pestana2:
         st.table(pd.DataFrame.from_dict(st.session_state.cartera, orient='index'))
     else:
         st.write("Tu cartera está en 100% liquidez esperando oportunidades.")
+
+# =========================================================
+# NUEVA PESTAÑA 3: CONFIGURACIÓN Y EDICIÓN DE LISTAS
+# =========================================================
+with pestana3:
+    st.header("⚙️ Gestor de Listas de Seguimiento")
+    st.write("Añade o elimina acciones de tus listas predeterminadas fácilmente.")
+    st.markdown("---")
+    
+    # 1. Selector de la lista a editar
+    lista_a_modificar = st.selectbox("Selecciona la lista que deseas gestionar:", list(st.session_state.listas_seguimiento.keys()), key="select_edicion")
+    
+    # Mostrar componentes actuales de la lista
+    acciones_actuales = st.session_state.listas_seguimiento[lista_a_modificar]
+    st.write(f"**Acciones actuales en '{lista_a_modificar}':** {', '.join(acciones_actuales) if acciones_actuales else 'Lista vacía'}")
+    
+    st.markdown("---")
+    col_add, col_del = st.columns(2)
+    
+    # Bloque para AÑADIR Tickers
+    with col_add:
+        st.subheader("➕ Añadir Acción")
+        nuevo_ticker = st.text_input("Escribe el ticker a añadir (ej: AMD, PLTR):", value="", key="input_add_ticker").upper().strip()
+        if st.button("✅ Añadir a la Lista", key="btn_add_ticker"):
+            if nuevo_ticker:
+                if nuevo_ticker not in st.session_state.listas_seguimiento[lista_a_modificar]:
+                    st.session_state.listas_seguimiento[lista_a_modificar].append(nuevo_ticker)
+                    st.success(f"¡{nuevo_ticker} se ha añadido correctamente a '{lista_a_modificar}'!")
+                    st.rerun()  # Recarga la app para aplicar el cambio visual inmediato
+                else:
+                    st.warning(f"El ticker {nuevo_ticker} ya existe en esta lista.")
+            else:
+                st.error("Por favor, escribe un ticker válido.")
+                
+    # Bloque para BORRAR Tickers
+    with col_del:
+        st.subheader("❌ Eliminar Acción")
+        if acciones_actuales:
+            ticker_a_borrar = st.selectbox("Selecciona qué ticker quieres quitar:", acciones_actuales, key="select_del_ticker")
+            if st.button("🗑️ Borrar de la Lista", key="btn_del_ticker"):
+                st.session_state.listas_seguimiento[lista_a_modificar].remove(ticker_a_borrar)
+                st.success(f"¡{ticker_a_borrar} eliminado de '{lista_a_modificar}'!")
+                st.rerun()  # Recarga la app para aplicar el cambio visual inmediato
+        else:
+            st.write("No hay acciones para borrar en esta lista.")
