@@ -6,13 +6,21 @@ import numpy as np
 # Configuración de página
 st.set_page_config(page_title="Terminal Financiero", layout="wide")
 
-# --- CONTROL DE LISTAS EDITABLES EN SESIÓN ---
+# =========================================================
+# INICIALIZACIÓN COMPLETA Y SEGURA DE LA MEMORIA (SESSION STATE)
+# =========================================================
 if "listas_seguimiento" not in st.session_state:
     st.session_state.listas_seguimiento = {
         "Robótica/IA": ["ISRG", "ABB", "6861.T", "SYM", "SERV", "TER", "6954.T", "SYK", "CGNX", "AUR", "MBLY"],
         "Tecnología": ["NVDA", "TSLA", "AAPL", "MSFT", "AMD"],
         "Semicond": ["ASML", "AVGO", "ARM", "SMCI", "MU"]
     }
+
+if "efectivo" not in st.session_state:
+    st.session_state.efectivo = 30000.0
+
+if "cartera_bot" not in st.session_state:
+    st.session_state.cartera_bot = []
 
 # --- MOTOR DE ANALÍTICA TÉCNICA Y FILTRO DE BRÓKER ---
 def analizar_activo(ticker, forzar_ing=False):
@@ -44,11 +52,10 @@ def analizar_activo(ticker, forzar_ing=False):
             broker_optimo = "Bolero / Revolut (Paga Dividendo)"
             es_apto_ing = False
             
-        # Si el bot requiere obligatoriamente ING y paga dividendos, se descarta SOLO para ese destino
         if forzar_ing and not es_apto_ing:
             return {"estado": "DESCARTADO", "motivo": "Filtro estricto ING: Paga dividendos."}
             
-        # Regla técnica del radar (Tendencia + Descanso/Giro)
+        # Regla técnica del radar
         if precio > sma200 and 45 <= rsi <= 55:
             estado = "COMPRAR"
             motivo = f"Punto óptimo. RSI sano ({rsi:.1f}) en tendencia alcista principal."
@@ -71,7 +78,7 @@ pestana1, pestana2, pestana3 = st.tabs([
 ])
 
 # =========================================================
-# PESTAÑA 1: ESCÁNER MANUAL (REORGANIZADO CON BOTONES SEPARADOS)
+# PESTAÑA 1: ESCÁNER MANUAL
 # =========================================================
 with pestana1:
     st.header("🔍 Escáner Manual de Mercado")
@@ -119,14 +126,13 @@ with pestana1:
                 st.warning("Esta lista está vacía.")
 
 # =========================================================
-# PESTAÑA 2: EL BOT MASIVO REESTRUCTURADO (65 COMPAÑÍAS)
+# PESTAÑA 2: EL BOT MASIVO (65 COMPAÑÍAS)
 # =========================================================
 with pestana2:
     st.header("🤖 Bot de Gestión Activa (Radar Ampliado de 65 Líderes)")
     st.write("Escanea el ecosistema global ejecutable en tus brókers y autogestiona un presupuesto de 30.000€.")
     st.markdown("---")
     
-    # Base de datos indexada por industria para la regla de diversificación (máx 2 por sector)
     UNIVERSO_EXPANDIDO = {
         "Cerebro / Procesamiento": ["NVDA", "AMD", "QCOM", "INTC", "AVGO", "MRVL", "ADI", "TXN", "MU", "SMCI"],
         "Robótica Quirúrgica / Salud": ["ISRG", "SYK", "ZBH", "MDT", "BSX", "GMED", "TFX"],
@@ -138,7 +144,6 @@ with pestana2:
         "Sistemas Autónomos / LiDAR": ["MBLY", "AUR", "LAZR", "APTIV"]
     }
     
-    # 1. Filtro de exclusión por cartera real
     st.subheader("🛡️ Exclusión de Cartera Real")
     exclusiones_input = st.text_input("Introduce las acciones que YA tienes compradas (separadas por comas, ej: NVDA, ASML):", value="", key="bot_excl").upper()
     lista_exclusiones = [t.strip() for t in exclusiones_input.split(",") if t.strip()]
@@ -146,47 +151,34 @@ with pestana2:
     if lista_exclusiones:
         st.warning(f"🚫 Omitiendo automáticamente del radar: {', '.join(lista_exclusiones)}")
         
-    # Inicializar la cartera del bot en memoria permanente
-    if 'efectivo' not in st.session_state:
-        st.session_state.efectivo = 30000.0
-        st.session_state.cartera_bot = []  # Lista de dicts comprados
-        
     st.markdown("---")
     c1, c2, c3 = st.columns(3)
     c1.metric("Presupuesto Inicial", "30.000 €")
     c2.metric("Efectivo Disponible", f"{st.session_state.efectivo:,.2f} €")
     c3.metric("Posiciones Abiertas", f"{len(st.session_state.cartera_bot)} / 10")
     
-    # Botón de ejecución diaria
-    if st.button("🚀 Activar Escáner de Mercado Abierto", key="btn_run_bot"):
+    if st.button("🚀 Activar Escáner Diario", key="btn_run_bot"):
         reporte_movimientos = []
         
-        # Contar cuántas posiciones tenemos ya por industria para no saturar
         conteo_industrias = {}
         for pos in st.session_state.cartera_bot:
             ind = pos["Industria"]
             conteo_industrias[ind] = conteo_industrias.get(ind, 0) + 1
             
-        # Recorremos el universo completo buscando relevos u oportunidades
         for industria, tickers in UNIVERSO_EXPANDIDO.items():
-            # Si ya tenemos 2 posiciones de esta industria, saltamos a la siguiente rama
             if conteo_industrias.get(industria, 0) >= 2:
                 continue
                 
             for ticker in tickers:
-                # Comprobación de límites generales del bot
                 if len(st.session_state.cartera_bot) >= 10 or st.session_state.efectivo < 3000:
                     break
                     
-                # Regla 1: Sustitución automática si ya está en cartera real o en la simulada
                 if ticker in lista_exclusiones or any(p["Ticker"] == ticker for p in st.session_state.cartera_bot):
                     continue
                     
-                # Analizar activo con su lógica técnica y fiscal
                 ans = analizar_activo(ticker)
                 
                 if ans and ans["estado"] == "COMPRAR":
-                    # Simular la compra en el slot disponible
                     st.session_state.cartera_bot.append({
                         "Ticker": ticker,
                         "Industria": industria,
@@ -203,7 +195,6 @@ with pestana2:
                         "Destino Recomendado": ans["broker"],
                         "Motivo Técnico": ans["motivo"]
                     })
-                    # Pasamos a la siguiente industria para forzar la diversificación
                     break
                     
         if reporte_movimientos:
