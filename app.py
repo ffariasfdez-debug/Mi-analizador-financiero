@@ -3,19 +3,8 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-# Configuración de página con márgenes optimizados
+# Configuración de página
 st.set_page_config(page_title="Terminal Financiero", layout="wide")
-
-# Reducir espacios en blanco masivos nativos de Streamlit mediante CSS personalizado
-st.markdown("""
-    <style>
-        .block-container {padding-top: 1rem; padding-bottom: 0rem;}
-        h1 {margin-top: -1rem; font-size: 2.2rem !important;}
-        h2 {font-size: 1.6rem !important;}
-        h3 {font-size: 1.2rem !important;}
-        div.stButton > button {width: 100%;}
-    </style>
-""", unsafe_style_html=True)
 
 # =========================================================
 # INICIALIZACIÓN COMPLETA Y SEGURA DE LA MEMORIA (SESSION STATE)
@@ -142,7 +131,6 @@ with pestana2:
         "Sistemas Autónomos / LiDAR": ["MBLY", "AUR", "LAZR", "APTIV"]
     }
     
-    # Reducimos cajas de texto
     exclusiones_input = st.text_input("🛡️ Exclusión de Cartera Real (Acciones que ya tienes separadas por comas):", value="", key="bot_excl").upper()
     lista_exclusiones = [t.strip() for t in exclusiones_input.split(",") if t.strip()]
     
@@ -196,7 +184,7 @@ with pestana2:
         st.write("Cartera en 100% liquidez.")
 
 # =========================================================
-# PESTAÑA 3: GESTOR DE LISTAS MANUALES (DISEÑO ANTI-CORTES)
+# PESTAÑA 3: GESTOR DE LISTAS MANUALES
 # =========================================================
 with pestana3:
     st.header("⚙️ Gestor de Listas de Seguimiento")
@@ -206,12 +194,11 @@ with pestana3:
     st.write(f"**Acciones actuales:** {', '.join(acciones_actuales) if acciones_actuales else 'Lista vacía'}")
     
     st.markdown("---")
-    # Ponemos las opciones una al lado de la otra para que suban arriba en la pantalla
     col_add, col_del = st.columns(2)
     
     with col_add:
         st.markdown("### ➕ Añadir Ticker")
-        nuevo_ticker = st.text_input("Escribe el ticker:", value="", key="add_t", help="Ejemplo: AMD, PLTR").upper().strip()
+        nuevo_ticker = st.text_input("Escribe el ticker:", value="", key="add_t").upper().strip()
         if st.button("✅ Confirmar Añadir", key="btn_add"):
             if nuevo_ticker and nuevo_ticker not in acciones_actuales:
                 st.session_state.listas_seguimiento[lista_a_modificar].append(nuevo_ticker)
