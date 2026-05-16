@@ -1,4 +1,4 @@
-import streamlit as st
+import streamlit as stimport streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -20,7 +20,7 @@ if "universo_bot" not in st.session_state:
         "Semiconductores Potencia / Energía": ["WOLF", "ON", "NXPI", "MPWR", "MCHP", "IFX.DE", "STM"],
         "Litografía / Equipos Sala Blanca": ["ASML", "ASM.AS", "AMAT", "LRCX", "KLAC", "TER", "ENTG", "MKSI", "COHR"],
         "Sistemas Autónomos / LiDAR": ["MBLY", "AUR", "LAZR", "APTIV"],
-        "Selección Manual / Extras": []  # <--- Aquí es donde se guardarán tus incorporaciones personalizadas
+        "Mi Selección Personal / Extras": []  # <--- Tus incorporaciones manuales se guardan aquí
     }
 
 if "listas_seguimiento" not in st.session_state:
@@ -64,7 +64,7 @@ def analizar_activo(ticker):
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rsi = (100 - (100 / (1 + (gain / loss)))).iloc[-1]
         
-        # Análisis fiscal estricto de flujos (Bélgica vs España)
+        # Enrutamiento fiscal óptimo (ING para 0% dividendos)
         if dividend_yield == 0:
             broker_optimo = "ING España (0% Dividendo - Eficiente)"
         else:
@@ -144,21 +144,32 @@ with pestana2:
     
     with col_bot:
         st.markdown("### 🛰️ Bloque 1: Escáner Automático del Universo")
-        # Mostrar cuántos tickers extras has metido tú en la base de datos
-        total_extras = len(st.session_state.universo_bot["Selección Manual / Extras"])
-        st.caption(f"Rastrea los subsectores industriales preconfigurados + ({total_extras}) activos inyectados por ti.")
+        total_base = sum(len(tickers) for sec, tickers in st.session_state.universo_bot.items() if sec != "Mi Selección Personal / Extras")
+        total_extras = len(st.session_state.universo_bot["Mi Selección Personal / Extras"])
+        st.caption(f"Rastrea {total_base} líderes industriales preconfigurados + {total_extras} activos inyectados por ti.")
+        
+        # --- NUEVA VISUALIZACIÓN EN PANTALLA DEL RADAR ---
+        with st.expander("📋 Ver lista fija de acciones bajo seguimiento técnico"):
+            st.markdown("### 🧬 Componentes del Universo del Bot")
+            for sector, tickers in st.session_state.universo_bot.items():
+                if sector == "Mi Selección Personal / Extras":
+                    if tickers:
+                        st.markdown(f"**🌟 {sector}:** {', '.join(tickers)}")
+                    else:
+                        st.markdown(f"**🌟 {sector}:** *Ninguno todavía. Añade tickers desde la columna derecha.*")
+                else:
+                    st.markdown(f"**• {sector}:** {', '.join(tickers)}")
         
         if st.button("🔌 Lanzar Rastreo Automático", key="btn_run_bot"):
             with st.spinner("Buscando ventanas técnicas óptimas..."):
                 temp_sug = []
                 sectores_activos = {}
                 for pos in st.session_state.cartera_bot:
-                    sec = pos.get("Subsector", "Selección Manual / Extras")
+                    sec = pos.get("Subsector", "Mi Selección Personal / Extras")
                     sectores_activos[sec] = sectores_activos.get(sec, 0) + 1
                     
                 for sector, tickers in st.session_state.universo_bot.items():
-                    # Mantenemos control de diversificación para los sectores base
-                    if sector != "Selección Manual / Extras" and sectores_activos.get(sector, 0) >= 2:
+                    if sector != "Mi Selección Personal / Extras" and sectores_activos.get(sector, 0) >= 2:
                         continue
                     for ticker in tickers:
                         if any(p["Ticker"] == ticker for p in st.session_state.cartera_bot):
@@ -168,8 +179,7 @@ with pestana2:
                             temp_sug.append({
                                 "Ticker": ticker, "Subsector": sector, "Precio": ans["precio"], "RSI": ans["rsi"], "Broker": ans["broker"]
                             })
-                            # Rompemos flujo si el sector base ya se satura
-                            if sector != "Selección Manual / Extras":
+                            if sector != "Mi Selección Personal / Extras":
                                 break
                 st.session_state.oportunidades_bot = temp_sug
                 
@@ -204,19 +214,19 @@ with pestana2:
                 st.write(f"**Filtro Técnico:** `{res_libre['estado']}`")
                 st.caption(f"Fiscalidad Bróker: {res_libre['broker']}")
                 
-                # COMPROBACIÓN DE SI YA EXISTE EN EL RADAR AUTOMÁTICO
+                # Comprobación de si ya existe en el radar dinámico
                 ya_en_radar = False
                 for sec, t_list in st.session_state.universo_bot.items():
                     if ticker_manual_libre in t_list:
                         ya_en_radar = True
                 
-                # BOTÓN 1: METERLO DENTRO DE LA LISTA DEL BOT PARA SIEMPRE
+                # BOTÓN 1: INYECTAR EN LA LISTA DEL BOT PARA SIEMPRE
                 if ya_en_radar:
                     st.success(f"ℹ️ {ticker_manual_libre} ya forma parte del radar permanente del Bot.")
                 else:
                     if st.button(f"📌 Inyectar {ticker_manual_libre} en Radar Fijo", key="btn_radar_inject"):
-                        st.session_state.universo_bot["Selección Manual / Extras"].append(ticker_manual_libre)
-                        st.success(f"¡{ticker_manual_libre} guardado en la lista del bot! Ahora se analizará de forma automática.")
+                        st.session_state.universo_bot["Mi Selección Personal / Extras"].append(ticker_manual_libre)
+                        st.success(f"¡{ticker_manual_libre} guardado en la lista del bot! Ahora saldrá en el panel.")
                         st.rerun()
                 
                 st.markdown("---")
@@ -232,7 +242,7 @@ with pestana2:
                     else:
                         st.session_state.cartera_bot.append({
                             "Ticker": ticker_manual_libre,
-                            "Subsector": "Selección Manual / Extras",
+                            "Subsector": "Mi Selección Personal / Extras",
                             "Precio Entrada": f"{res_libre['precio']:.2f} $",
                             "RSI": round(res_libre['rsi'], 1),
                             "Bróker Destino": res_libre['broker']
