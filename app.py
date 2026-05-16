@@ -3,90 +3,150 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-st.set_page_config(page_title="Analizador Pro: Momentum & Robótica", layout="wide")
+st.set_page_config(page_title="Terminal Financiero", layout="wide")
 
-def obtener_recomendacion(m):
-    # Lógica de Inversión Refinada
-    if m['RSI'] > 75:
-        return "🚨 SOBRECOMPRA EXTREMA", f"Riesgo muy alto de corrección. No comprar aquí. Esperar retroceso a zona de ${m['SMA50']:.2f}."
-    elif 68 < m['RSI'] <= 75:
-        return "⚠️ MANTENER / NO PERSEGUIR", "Fuerza alta, pero el precio está extendido. Si ya las tienes, mantén; si no, espera un descanso."
-    elif m['Precio'] > m['SMA50'] and 50 < m['RSI'] <= 68:
-        return "🔥 COMPRAR (Punto Óptimo)", "Tendencia alcista con margen de subida antes de sobrecompra."
-    elif m['Precio'] < m['SMA200']:
-        return "❄️ EVITAR / BAJISTA", f"Tendencia negativa a largo plazo. Solo entrar si recupera los ${m['SMA200']:.2f}."
-    elif m['RSI'] < 35:
-        return "🎯 OPORTUNIDAD (Sobreventa)", f"Posible suelo temporal. Rebote técnico probable cerca de ${m['Precio']:.2f}."
-    else:
-        return "⌛ ESPERAR / VIGILAR", "Buscando dirección clara. Vigilar si rompe la media de 50 con fuerza."
+# --- MENÚ LATERAL DE NAVEGACIÓN ---
+st.sidebar.title("🎛️ Centro de Mando")
+menu = st.sidebar.radio("Selecciona herramienta:", ["🔍 Escáner Manual", "🤖 Bot Autónomo 30k"])
 
-def calcular_analitica(df):
-    if df.empty or len(df) < 200: return None
-    # Limpieza de columnas para yfinance
-    df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
-    
-    precio = df['Close'].iloc[-1]
-    df['SMA50'] = df['Close'].rolling(window=50).mean()
-    df['SMA200'] = df['Close'].rolling(window=200).mean()
-    
-    # RSI
-    delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rsi = 100 - (100 / (1 + (gain / loss))).iloc[-1]
-    
-    m = {
-        "Precio": precio,
-        "SMA50": df['SMA50'].iloc[-1],
-        "SMA200": df['SMA200'].iloc[-1],
-        "RSI": rsi,
-        "Cambio": df['Close'].pct_change().iloc[-1] * 100,
-        "df_grafico": df[['Close', 'SMA50', 'SMA200']].tail(252)
-    }
-    m['Accion'], m['Detalle'] = obtener_recomendacion(m)
-    return m
-
-# --- CONFIGURACIÓN DE LISTAS ---
-listas_seguimiento = {
-    "Robótica/IA": ["ISRG", "ABB", "6861.T", "SYM", "SERV", "272210.KS", "TER", "6954.T", "SYK", "CGNX", "AUR", "MBLY"],
-    "Tecnología": ["NVDA", "TSLA", "AAPL", "MSFT", "AMD"],
-    "Cripto/ETF": ["BTC-USD", "COIN", "MSTR", "IBIT"],
-    "Bélgica/EU": ["ABI.BR", "UCB.BR", "SAP", "ASML.AS"]
-}
-
-# --- INTERFAZ ---
-st.sidebar.title("Estrategia 2026-2030")
-modo = st.sidebar.radio("Modo:", ["🔍 Análisis Individual", "📊 Comparador de Listas"])
-
-if modo == "🔍 Análisis Individual":
-    ticker = st.text_input("Introduce Ticker:", "ISRG").upper()
-    if st.button("Analizar"):
-        data = yf.Ticker(ticker).history(period="2y")
-        m = calcular_analitica(data)
-        if m:
-            st.header(f"Estrategia: {m['Accion']}")
-            st.info(f"**Análisis Técnico:** {m['Detalle']}")
-            
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Precio Actual", f"${m['Precio']:.2f}", f"{m['Cambio']:.2f}%")
-            c2.metric("Fuerza RSI", f"{m['RSI']:.1f}")
-            c3.metric("Suelo Largo Plazo", f"${m['SMA200']:.2f}")
-
-            st.line_chart(m['df_grafico'])
-        else:
-            st.error("No se encontraron datos suficientes. Revisa el Ticker.")
-
-else:
-    st.title("Momentum de mis Listas")
-    lista_sel = st.sidebar.selectbox("Selecciona Lista:", list(listas_seguimiento.keys()))
-    if st.button("Ejecutar Análisis"):
-        res = []
-        progreso = st.progress(0)
-        for i, t in enumerate(listas_seguimiento[lista_sel]):
-            d = yf.Ticker(t).history(period="2y")
-            m = calcular_analitica(d)
-            if m:
-                res.append({"Ticker": t, "RSI": round(m['RSI'], 1), "Estado": m['Accion']})
-            progreso.progress((i + 1) / len(listas_seguimiento[lista_sel]))
+# --- CÓDIGO COMÚN: ANALÍTICA TÉCNICA ---
+def analizar_activo(ticker, regla_broker="Bolero/Revolut"):
+    try:
+        tk = yf.Ticker(ticker)
+        info = tk.info
+        df = tk.history(period="2y")
         
-        st.table(pd.DataFrame(res))
+        if df.empty or len(df) < 200: return None
+        df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
+        
+        dividend_yield = info.get('dividendYield', 0)
+        if dividend_yield is None: dividend_yield = 0
+        
+        # Filtro estricto para ING
+        if "ING" in regla_broker and dividend_yield > 0:
+            return {"estado": "DESCARTADO", "motivo": "Filtro ING: Paga dividendos."}
+            
+        precio = df['Close'].iloc[-1]
+        sma200 = df['Close'].rolling(window=200).mean().iloc[-1]
+        
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rsi = (100 - (100 / (1 + (gain / loss)))).iloc[-1]
+        
+        if precio > sma200 and 45 <= rsi <= 55:
+            estado = "COMPRAR"
+            motivo = f"Punto óptimo. RSI sano ({rsi:.1f}) y tendencia alcista."
+        else:
+            estado = "ESPERAR"
+            motivo = "Precio extendido o sin fuerza clara."
+            
+        return {"estado": estado, "precio": precio, "rsi": rsi, "yield": dividend_yield, "motivo": motivo, "sma200": sma200}
+    except:
+        return None
+
+# ==========================================
+# PASTA 1: EL ESCÁNER MANUAL (TU APP ORIGINAL)
+# ==========================================
+if menu == "🔍 Escáner Manual":
+    st.title("🔍 Escáner Manual de Mercado")
+    st.write("Revisa tus listas de seguimiento y analiza puntos de entrada manualmente.")
+    
+    listas_seguimiento = {
+        "Robótica/IA": ["ISRG", "ABB", "6861.T", "SYM", "SERV", "TER", "6954.T", "SYK", "CGNX", "AUR", "MBLY"],
+        "Tecnología": ["NVDA", "TSLA", "AAPL", "MSFT", "AMD"],
+        "Semicond": ["ASML", "AVGO", "ARM", "SMCI", "MU"]
+    }
+    
+    lista_sel = st.selectbox("Selecciona la lista a escanear:", list(listas_seguimiento.keys()))
+    
+    if st.button("Ejecutar Análisis de Lista"):
+        resultados = []
+        for t in listas_seguimiento[lista_sel]:
+            res = analizar_activo(t)
+            if res:
+                resultados.append({
+                    "Ticker": t, "Precio": f"{res['precio']:.2f}$", 
+                    "RSI": round(res['rsi'], 1), "Estado": res['estado'], "Nota": res['motivo']
+                })
+        st.table(pd.DataFrame(resultados))
+
+# ==========================================
+# PESTAÑA 2: EL BOT AUTÓNOMO DE 30K
+# ==========================================
+elif menu == "🤖 Bot Autónomo 30k":
+    st.title("🤖 Tu Asesor Autónomo de Inversión")
+    st.write("Estrategia de Gestión Activa para un presupuesto maestro de **30.000€**.")
+    
+    ESTRUCTURA_CARTERA = {
+        "Slot 1: Cómputo IA (Líder)": {"tickers": ["NVDA", "AMD"], "broker": "ING (0% Div)"},
+        "Slot 2: Litografía/Equipos": {"tickers": ["ASML", "AMAT", "LRCX"], "broker": "Bolero/Revolut"},
+        "Slot 3: Robótica Quirúrgica": {"tickers": ["ISRG", "SYK"], "broker": "Bolero/Revolut"},
+        "Slot 4: Automatización Logística": {"tickers": ["SYM", "AZO"], "broker": "ING (0% Div)"},
+        "Slot 5: Fotónica y Sensores": {"tickers": ["6861.T", "CGNX"], "broker": "Bolero/Revolut"},
+        "Slot 6: Ciberseguridad IA": {"tickers": ["CRWD", "PANW", "NET"], "broker": "ING (0% Div)"},
+        "Slot 7: Software de Diseño (EDA)": {"tickers": ["CDNS", "SNPS"], "broker": "ING (0% Div)"},
+        "Slot 8: Semiconductores Potencia": {"tickers": ["WOLF", "ON"], "broker": "ING (0% Div)"},
+        "Slot 9: Infraestructura Cloud": {"tickers": ["MSFT", "AMZN", "GOOGL"], "broker": "ING (0% Div)"},
+        "Slot 10: Especulativo / Autónomo": {"tickers": ["SERV", "AUR", "MBLY"], "broker": "Bolero/Revolut"}
+    }
+    
+    st.sidebar.markdown("---")
+    st.sidebar.header("🛡️ Filtro de Cartera Real")
+    exclusiones_input = st.sidebar.text_input("Tickers a excluir (ej: NVDA, ASML):", value="").upper()
+    lista_exclusiones = [t.strip() for t in exclusiones_input.split(",") if t.strip()]
+    
+    if 'efectivo' not in st.session_state:
+        st.session_state.efectivo = 30000.0
+        st.session_state.cartera = {}
+        
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Presupuesto Inicial", "30.000 €")
+    c2.metric("Efectivo Disponible", f"{st.session_state.efectivo:,.2f} €")
+    c3.metric("Posiciones Activas", f"{len(st.session_state.cartera)} / 10")
+    
+    if st.button("🚀 Activar Escáner Diario del Bot"):
+        reporte_movimientos = []
+        for slot, configuracion in ESTRUCTURA_CARTERA.items():
+            if slot in st.session_state.cartera: continue
+            
+            comprado_en_este_slot = False
+            for ticker in configuracion["tickers"]:
+                if comprado_en_este_slot: break
+                
+                if ticker in lista_exclusiones:
+                    reporte_movimientos.append({
+                        "Slot": slot, "Acción": f"EXCLUIDO {ticker}", 
+                        "Broker Destino": configuracion["broker"], "Reseña Técnica": "Ya en cartera real."
+                    })
+                    continue
+                
+                ans = analizar_activo(ticker, configuracion["broker"])
+                if ans and ans["estado"] == "COMPRAR":
+                    if st.session_state.efectivo >= 3000:
+                        st.session_state.cartera[slot] = {
+                            "Ticker": ticker, "Precio Entrada": ans["precio"], 
+                            "Acciones": round(3000 / ans["precio"], 2), "Broker": configuracion["broker"]
+                        }
+                        st.session_state.efectivo -= 3000
+                        reporte_movimientos.append({
+                            "Slot": slot, "Acción": f"COMPRADO {ticker}", 
+                            "Broker Destino": configuracion["broker"], "Reseña Técnica": ans["motivo"]
+                        })
+                        comprado_en_este_slot = True
+                elif ans and ans["estado"] == "DESCARTADO":
+                    reporte_movimientos.append({
+                        "Slot": slot, "Acción": f"Ignorar {ticker}", 
+                        "Broker Destino": configuracion["broker"], "Reseña Técnica": ans["motivo"]
+                    })
+                    
+        if reporte_movimientos:
+            st.subheader("📝 Bitácora de Movimientos")
+            st.table(pd.DataFrame(reporte_movimientos))
+            
+    st.markdown("---")
+    st.subheader("📊 Mi Cartera Virtual en Tiempo Real")
+    if st.session_state.cartera:
+        st.table(pd.DataFrame.from_dict(st.session_state.cartera, orient='index'))
+    else:
+        st.write("Tu cartera está en 100% liquidez.")
