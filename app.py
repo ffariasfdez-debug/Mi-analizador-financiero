@@ -1,4 +1,4 @@
-import streamlit as st
+iimport streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -14,6 +14,19 @@ if "listas_seguimiento" not in st.session_state:
         "Robótica/IA": ["ISRG", "ABB", "6861.T", "SYM", "SERV", "TER", "6954.T", "SYK", "CGNX", "AUR", "MBLY"],
         "Tecnología": ["NVDA", "TSLA", "AAPL", "MSFT", "AMD"],
         "Semicond": ["ASML", "AVGO", "ARM", "SMCI", "MU"]
+    }
+
+# Universo del Bot en Session State para que sea dinámico y permita añadir tickers manualmente
+if "universo_bot" not in st.session_state:
+    st.session_state.universo_bot = {
+        "Cerebro / Procesamiento": ["NVDA", "AMD", "QCOM", "INTC", "AVGO", "MRVL", "ADI", "TXN", "MU", "SMCI"],
+        "Robótica Quirúrgica / Salud": ["ISRG", "SYK", "ZBH", "MDT", "BSX", "GMED", "TFX"],
+        "Automatización / Logística": ["SYM", "ABB", "SIE.DE", "ROK", "GWW", "FAST", "AZO", "SNA", "GE"],
+        "Fotónica / Sensórica / Visión": ["CGNX", "KEYS", "ROV", "PH", "AME", "TDY", "KYCCF"],
+        "Software Industrial / EDA": ["CDNS", "SNPS", "ANSS", "PTC", "ADSK", "DSY.PA", "SAP.DE"],
+        "Semiconductores Potencia / Energía": ["WOLF", "ON", "NXPI", "MPWR", "MCHP", "IFX.DE", "STM"],
+        "Litografía / Equipos Sala Blanca": ["ASML", "ASM.AS", "AMAT", "LRCX", "KLAC", "TER", "ENTG", "MKSI", "COHR"],
+        "Sistemas Autónomos / LiDAR": ["MBLY", "AUR", "LAZR", "APTIV"]
     }
 
 if "efectivo" not in st.session_state:
@@ -44,7 +57,6 @@ def analizar_activo(ticker, forzar_ing=False):
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rsi = (100 - (100 / (1 + (gain / loss)))).iloc[-1]
         
-        # Asignación inteligente de bróker basada en dividendos
         if dividend_yield == 0:
             broker_optimo = "ING (0% Div) o Bolero/Revolut"
             es_apto_ing = True
@@ -55,7 +67,6 @@ def analizar_activo(ticker, forzar_ing=False):
         if forzar_ing and not es_apto_ing:
             return {"estado": "DESCARTADO", "motivo": "Filtro estricto ING: Paga dividendos."}
             
-        # Regla técnica del radar
         if precio > sma200 and 45 <= rsi <= 55:
             estado = "COMPRAR"
             motivo = f"Punto óptimo. RSI sano ({rsi:.1f}) en tendencia alcista principal."
@@ -74,7 +85,7 @@ st.title("🎛️ Centro de Mando Financiero")
 pestana1, pestana2, pestana3 = st.tabs([
     "🔍 Escáner Manual de Listas", 
     "🤖 Bot Masivo Robótica 30k",
-    "⚙️ Configuración de Listas"
+    "⚙️ Configuración y Añadir Tickers"
 ])
 
 # =========================================================
@@ -126,30 +137,19 @@ with pestana1:
                 st.warning("Esta lista está vacía.")
 
 # =========================================================
-# PESTAÑA 2: EL BOT MASIVO (65 COMPAÑÍAS)
+# PESTAÑA 2: EL BOT MASIVO CON MEMORIA DINÁMICA
 # =========================================================
 with pestana2:
-    st.header("🤖 Bot de Gestión Activa (Radar Ampliado de 65 Líderes)")
+    st.header("🤖 Bot de Gestión Activa (Radar Ampliado de Líderes)")
     st.write("Escanea el ecosistema global ejecutable en tus brókers y autogestiona un presupuesto de 30.000€.")
     st.markdown("---")
-    
-    UNIVERSO_EXPANDIDO = {
-        "Cerebro / Procesamiento": ["NVDA", "AMD", "QCOM", "INTC", "AVGO", "MRVL", "ADI", "TXN", "MU", "SMCI"],
-        "Robótica Quirúrgica / Salud": ["ISRG", "SYK", "ZBH", "MDT", "BSX", "GMED", "TFX"],
-        "Automatización / Logística": ["SYM", "ABB", "SIE.DE", "ROK", "GWW", "FAST", "AZO", "SNA", "GE"],
-        "Fotónica / Sensórica / Visión": ["CGNX", "KEYS", "ROV", "PH", "AME", "TDY", "KYCCF"],
-        "Software Industrial / EDA": ["CDNS", "SNPS", "ANSS", "PTC", "ADSK", "DSY.PA", "SAP.DE"],
-        "Semiconductores Potencia / Energía": ["WOLF", "ON", "NXPI", "MPWR", "MCHP", "IFX.DE", "STM"],
-        "Litografía / Equipos Sala Blanca": ["ASML", "ASM.AS", "AMAT", "LRCX", "KLAC", "TER", "ENTG", "MKSI", "COHR"],
-        "Sistemas Autónomos / LiDAR": ["MBLY", "AUR", "LAZR", "APTIV"]
-    }
     
     st.subheader("🛡️ Exclusión de Cartera Real")
     exclusiones_input = st.text_input("Introduce las acciones que YA tienes compradas (separadas por comas, ej: NVDA, ASML):", value="", key="bot_excl").upper()
     lista_exclusiones = [t.strip() for t in exclusiones_input.split(",") if t.strip()]
     
     if lista_exclusiones:
-        st.warning(f"🚫 Omitiendo automáticamente del radar: {', '.join(lista_exclusiones)}")
+        st.warning(f"🚫 Omitiendo automáticamente del radar del bot: {', '.join(lista_exclusiones)}")
         
     st.markdown("---")
     c1, c2, c3 = st.columns(3)
@@ -165,7 +165,8 @@ with pestana2:
             ind = pos["Industria"]
             conteo_industrias[ind] = conteo_industrias.get(ind, 0) + 1
             
-        for industria, tickers in UNIVERSO_EXPANDIDO.items():
+        # Usa st.session_state.universo_bot en lugar del diccionario estático fijo anterior
+        for industria, tickers in st.session_state.universo_bot.items():
             if conteo_industrias.get(industria, 0) >= 2:
                 continue
                 
@@ -201,7 +202,7 @@ with pestana2:
             st.subheader("📝 Bitácora de Operaciones de Hoy")
             st.table(pd.DataFrame(reporte_movimientos))
         else:
-            st.info("El escáner no ha encontrado nuevos activos que cumplan el patrón exacto de giro técnico hoy (o la cartera está llena).")
+            st.info("El escáner no ha encontrado nuevos activos que cumplan el patrón exacto hoy (o la cartera del bot está llena).")
             
     st.markdown("---")
     st.subheader("📊 Estado Actual de la Cartera del Bot (Simulada)")
@@ -212,37 +213,71 @@ with pestana2:
             st.session_state.cartera_bot = []
             st.rerun()
     else:
-        st.write("Cartera vacía. Pulsa el botón superior para poner al bot a escanear el mercado.")
+        st.write("Cartera vacía. Pulsa el botón superior para poner al bot a escanear.")
 
 # =========================================================
-# PESTAÑA 3: GESTOR DE LISTAS MANUALES
+# PESTAÑA 3: GESTOR CENTRALIZADO (MANUAL Y BOT)
 # =========================================================
 with pestana3:
-    st.header("⚙️ Gestor de Listas de Seguimiento")
-    st.write("Modifica los componentes de tus listas para el Escáner Manual.")
+    st.header("⚙️ Panel de Control y Configuración")
+    st.write("Gestiona tanto tus listas manuales como el universo de búsqueda del Bot Autónomo.")
     st.markdown("---")
     
-    lista_a_modificar = st.selectbox("Selecciona la lista a gestionar:", list(st.session_state.listas_seguimiento.keys()), key="edit_lista")
-    acciones_actuales = st.session_state.listas_seguimiento[lista_a_modificar]
-    st.write(f"**Acciones en '{lista_a_modificar}':** {', '.join(acciones_actuales) if acciones_actuales else 'Lista vacía'}")
-    
-    st.markdown("---")
-    col_add, col_del = st.columns(2)
-    
-    with col_add:
-        st.subheader("➕ Añadir Acción")
-        nuevo_ticker = st.text_input("Ticker a añadir:", value="", key="add_t").upper().strip()
-        if st.button("✅ Confirmar Añadir", key="btn_add"):
+    # SECCIÓN A: GESTIÓN DE LAS LISTAS MANUALES
+    st.subheader("📋 1. Modificar Listas del Escáner Manual")
+    col_m1, col_m2 = st.columns([1, 2])
+    with col_m1:
+        lista_a_modificar = st.selectbox("Selecciona lista manual:", list(st.session_state.listas_seguimiento.keys()), key="edit_lista")
+    with col_m2:
+        acciones_actuales = st.session_state.listas_seguimiento[lista_a_modificar]
+        st.write(f"**Contenido actual:** {', '.join(acciones_actuales) if acciones_actuales else 'Vacía'}")
+        
+    c_add_m, c_del_m = st.columns(2)
+    with c_add_m:
+        nuevo_ticker = st.text_input("Añadir ticker a lista manual:", value="", key="add_t").upper().strip()
+        if st.button("✅ Añadir a Lista Manual", key="btn_add"):
             if nuevo_ticker and nuevo_ticker not in acciones_actuales:
                 st.session_state.listas_seguimiento[lista_a_modificar].append(nuevo_ticker)
-                st.success(f"{nuevo_ticker} añadido.")
+                st.success(f"{nuevo_ticker} añadido a la lista manual.")
                 st.rerun()
-                
-    with col_del:
-        st.subheader("❌ Eliminar Acción")
+    with c_del_m:
         if acciones_actuales:
-            ticker_a_borrar = st.selectbox("Ticker a quitar:", acciones_actuales, key="del_t")
-            if st.button("🗑️ Confirmar Borrado", key="btn_del"):
+            ticker_a_borrar = st.selectbox("Quitar ticker de lista manual:", acciones_actuales, key="del_t")
+            if st.button("🗑️ Borrar de Lista Manual", key="btn_del"):
                 st.session_state.listas_seguimiento[lista_a_modificar].remove(ticker_a_borrar)
-                st.success(f"{ticker_a_borrar} eliminado.")
+                st.success(f"{ticker_a_borrar} eliminado de la lista manual.")
+                st.rerun()
+
+    st.markdown("---")
+    
+    # SECCIÓN B: GESTIÓN DEL UNIVERSO DEL BOT (LA NUEVA OPCIÓN)
+    st.subheader("🤖 2. Ampliar el Universo de Búsqueda del Bot")
+    st.write("Si un nuevo componente entra en un índice sectorial, añádelo aquí para que el Bot lo vigile diariamente.")
+    
+    col_b1, col_b2 = st.columns([1, 2])
+    with col_b1:
+        sector_bot_sel = st.selectbox("Selecciona a qué subsector pertenece:", list(st.session_state.universo_bot.keys()), key="sector_bot")
+    with col_b2:
+        tickers_bot_actuales = st.session_state.universo_bot[sector_bot_sel]
+        st.write(f"**Empresas vigiladas en este subsector ({len(tickers_bot_actuales)}):**")
+        st.write(f"{', '.join(tickers_bot_actuales)}")
+
+    c_add_b, c_del_b = st.columns(2)
+    with c_add_b:
+        nuevo_ticker_bot = st.text_input("Escribe el nuevo ticker para el Bot (ej: PLTR, VRT):", value="", key="add_t_bot").upper().strip()
+        if st.button("🚀 Inyectar al Radar del Bot", key="btn_add_bot"):
+            if nuevo_ticker_bot:
+                # Verificar que no esté ya en ese sector
+                if nuevo_ticker_bot not in tickers_bot_actuales:
+                    st.session_state.universo_bot[sector_bot_sel].append(nuevo_ticker_bot)
+                    st.success(f"¡Brillante! {nuevo_ticker_bot} ha sido añadido al subsector '{sector_bot_sel}' del Bot.")
+                    st.rerun()
+                else:
+                    st.warning(f"El ticker {nuevo_ticker_bot} ya está dentro de este subsector.")
+    with c_del_b:
+        if tickers_bot_actuales:
+            ticker_bot_borrar = st.selectbox("Selecciona un ticker si deseas sacarlo del Bot:", tickers_bot_actuales, key="del_t_bot")
+            if st.button("🗑️ Eliminar del Radar del Bot", key="btn_del_bot"):
+                st.session_state.universo_bot[sector_bot_sel].remove(ticker_bot_borrar)
+                st.success(f"{ticker_bot_borrar} retirado del universo del Bot.")
                 st.rerun()
