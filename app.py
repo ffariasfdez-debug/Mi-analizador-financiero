@@ -7,6 +7,13 @@ import pytz
 # 1. CONFIGURACIÓN BÁSICA DE LA PÁGINA
 st.set_page_config(page_title="Centro de Mando Financiero", layout="wide")
 
+st.markdown("""
+    <style>
+    .stDataFrame div[data-testid="stTable"] {overflow: visible !important;}
+    div[data-testid="stMetricValue"] {font-size: 1.6rem !important;}
+    </style>
+""", unsafe_allow_html=True)
+
 # 2. INICIALIZACIÓN DEL CONTROL DE ESTADOS (SESSION STATE)
 if "listas_seguimiento" not in st.session_state:
     st.session_state.listas_seguimiento = {
@@ -24,7 +31,10 @@ if "cartera_bot" not in st.session_state:
 if "manual_tickers" not in st.session_state:
     st.session_state.manual_tickers = []
 
-# Universo ampliado de 65 activos para el Radar del Bot
+# Contador de compras de 2000€ consecutivas para el freno de mano
+if "consecutivas_maximas" not in st.session_state:
+    st.session_state.consecutivas_maximas = 0
+
 UNIVERSO_BASE_BOT = [
     "NVDA", "AMD", "QCOM", "INTC", "AVGO", "MRVL", "ADI", "TXN", "MU", "SMCI",
     "ISRG", "SYK", "ZBH", "MDT", "BSX", "GMED", "TFX", "SYM", "ABB", "SIE.DE",
@@ -34,7 +44,7 @@ UNIVERSO_BASE_BOT = [
     "LRCX", "KLAC", "TER", "ENTG", "MKSI", "COHR", "MBLY", "AUR", "LAZR", "APTIV"
 ]
 
-# 3. COMPROBACIÓN DE HORARIOS DE MERCADO (CET vs EST)
+# 3. COMPROBACIÓN DE HORARIOS DE MERCADO
 def comprobar_horario_mercado(ticker):
     es_europeo = any(ticker.endswith(sufijo) for sufijo in [".DE", ".PA", ".AS", ".MI", ".MC"])
     
@@ -57,12 +67,10 @@ def comprobar_horario_mercado(ticker):
     else:
         return False, "CERRADO (Fuera de hora)"
 
-# 4. MOTOR DE ANÁLISIS DE DATOS
+# 4. MOTOR DE ANÁLISIS DE DATOS Y GESTIÓN DE RIESGO
 def analizar_activo(ticker):
     try:
         tk = yf.Ticker(ticker)
-        
-        # Extracción segura del dividendo para control fiscal
         try:
             dividend_yield = tk.info.get('dividendYield', 0) or 0
         except:
@@ -72,7 +80,6 @@ def analizar_activo(ticker):
         if df.empty or len(df) < 200:
             return None
             
-        # Limpieza de columnas multidimensionales de yFinance
         df.columns = [col[0] if isinstance(col, tuple) else col for col in df.columns]
         
         precio_actual = float(df['Close'].iloc[-1])
@@ -90,7 +97,23 @@ def analizar_activo(ticker):
         minimo = float(df['Low'].iloc[-1])
         
         broker_optimo = "ING España (0% Div)" if dividend_yield == 0 else "Bolero / Revolut"
+        
+        # Filtro de compra base
         se_compra = precio_actual > sma200 and 45 <= rsi <= 55
+        
+        # 📊 CÁCULO DINÁMICO DEL CAPITAL (GESTIÓN MONETARIA POR MOMENTUM)
+        distancia_sma200 = ((precio_actual - sma200) / sma200) * 100
+        
+        # Si el momentum es fuerte (>10% sobre la media de 200) y el freno no está activo
+        if distancia_sma200 > 10.0 and st.session_state.consecutivas_maximas < 2:
+            capital_asignado = 2000.0
+            tipo_entrada = "MOMENTUM MÁXIMO (2k)"
+        else:
+            capital_asignado = 1000.0
+            if distancia_sma200 <= 10.0:
+                tipo_entrada = "PRUDENTE BASE (1k)"
+            else:
+                tipo_entrada = "PRUDENTE (Freno de Mano 1k)"
         
         return {
             "ticker": ticker,
@@ -101,7 +124,9 @@ def analizar_activo(ticker):
             "vol": volumen,
             "rsi": rsi,
             "broker": broker_optimo,
-            "decision": "COMPRAR" if se_compra else "ESPERAR"
+            "decision": "COMPRAR" if se_compra else "ESPERAR",
+            "capital_calculado": capital_asignado,
+            "tipo_entrada": tipo_entrada
         }
     except:
         return None
@@ -136,7 +161,7 @@ with pestana1:
                     c1.metric("Precio Actual", f"{res_ind['precio']:.2f}")
                     c2.metric("RSI (14)", f"{res_ind['rsi']:.1f}")
                     c3.metric("Filtro Técnico", res_ind['decision'])
-                    st.info(f"Ruta Fiscal Optimizada: {res_ind['broker']}")
+                    st.info(f"Asignación Propuesta: {res_ind['tipo_entrada']} | Ruta Fiscal: {res_ind['broker']}")
                 else:
                     st.error("No se han podido cruzar datos o el ticker es incorrecto.")
                     
@@ -154,18 +179,17 @@ with pestana1:
                             "Precio": f"{res['precio']:.2f}",
                             "RSI": round(res['rsi'], 1),
                             "Filtro": res['decision'],
+                            "Propuesta Bot": res['tipo_entrada'],
                             "Canal Broker": res['broker']
                         })
             if resultados_lista:
                 st.dataframe(pd.DataFrame(resultados_lista), use_container_width=True, hide_index=True)
-            else:
-                st.warning("No se pudieron cargar datos para los elementos de esta lista.")
 
 # ---------------------------------------------------------
-# PESTAÑA 2: BOT AUTOMÁTICO MULTI-MERCADO
+# PESTAÑA 2: BOT AUTOMÁTICO CON ENTRADA ESCALONADA POR MOMENTUM
 # ---------------------------------------------------------
 with pestana2:
-    st.subheader("🤖 Algoritmo de Rastreo y Operativa Autónoma")
+    st.subheader("🤖 Algoritmo de Gestión Autónoma por Momentum Técnico")
     
     cartera_real_input = st.text_input("Acciones a excluir del radar de compra (ej: NVDA, ASML):", value="", key="input_exclusiones_bot").upper()
     exclusiones_reales = [t.strip() for t in cartera_real_input.split(",") if t.strip()]
@@ -189,53 +213,70 @@ with pestana2:
     if radar_data:
         df_radar = pd.DataFrame(radar_data)
         
-        # Construcción segura de la tabla estilo Investing
         df_investing = pd.DataFrame()
         df_investing["Ticker"] = df_radar["ticker"]
         df_investing["Último"] = df_radar["precio"].map(lambda x: f"{x:,.2f}")
         df_investing["Var. %"] = df_radar["var"].map(lambda x: f"{x:+.2f}%")
-        df_investing["Máx"] = df_radar["max"].map(lambda x: f"{x:,.2f}")
-        df_investing["Mín"] = df_radar["min"].map(lambda x: f"{x:,.2f}")
         df_investing["Volumen"] = df_radar["vol"].map(lambda x: f"{x:,.0f}")
         df_investing["RSI"] = df_radar["rsi"].map(lambda x: f"{x:,.1f}")
         df_investing["Mercado"] = df_radar["estado_mercado"]
+        df_investing["Asignación"] = df_radar["tipo_entrada"]
         df_investing["Filtro"] = df_radar["decision"]
         
         df_investing = df_investing.sort_values(by="Ticker")
         st.dataframe(df_investing, use_container_width=True, hide_index=True, height=500)
         
-        # SIMULACIÓN DE COMPRA EN TIEMPO REAL (Respetando la apertura oficial)
+        # PROCESO OPERATIVO DINÁMICO
         for operativo in radar_data:
             if operativo["decision"] == "COMPRAR" and operativo["mercado_abierto"]:
                 ya_comprada = any(pos["Ticker"] == operativo["ticker"] for pos in st.session_state.cartera_bot)
-                if not ya_comprada and len(st.session_state.cartera_bot) < 10 and st.session_state.efectivo >= 3000:
+                monto = operativo["capital_calculado"]
+                
+                if not ya_comprada and st.session_state.efectivo >= monto:
+                    # Registrar la operación
                     st.session_state.cartera_bot.append({
                         "Fecha/Hora": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "Ticker": operativo["ticker"],
                         "Precio Ejecución": f"{operativo['precio']:.2f}",
-                        "Capital": "3.000 €",
+                        "Capital Invertido": f"{monto:,.0f} €",
                         "RSI": round(operativo["rsi"], 1),
+                        "Motivo Tipo": operativo["tipo_entrada"],
                         "Canal": operativo["broker"]
                     })
-                    st.session_state.efectivo -= 3000
-                    st.toast(f"🤖 Compra simulada con éxito: {operativo['ticker']}")
+                    st.session_state.efectivo -= monto
+                    
+                    # Gestionar el contador del freno de mano para la siguiente iteración
+                    if monto == 2000.0:
+                        st.session_state.consecutivas_maximas += 1
+                    else:
+                        st.session_state.consecutivas_maximas = 0 # Se resetea la racha si entra una de 1000€
+                        
+                    st.toast(f"🤖 Compra ejecutada: {operativo['ticker']} con {monto} €")
                     st.rerun()
 
     st.markdown("---")
     st.subheader("📊 Libro de Registro de Posiciones")
+    
+    # Añadimos un aviso visual del estado del freno de mano para monitorizarlo en el móvil
+    if st.session_state.consecutivas_maximas >= 2:
+        st.warning(f"⚠️ **Freno de mano activo:** Se han realizado {st.session_state.consecutivas_maximas} compras seguidas de 2.000 €. Las siguientes operaciones se limitarán a 1.000 € para proteger caja.")
+    else:
+        st.caption(f"Racha de compras máximas consecutivas: {st.session_state.consecutivas_maximas} / 2")
+
     cm1, cm2, cm3 = st.columns(3)
     cm1.metric("Fondo Estrategia", "30.000 €")
     cm2.metric("Caja Líquida", f"{st.session_state.efectivo:,.2f} €")
-    cm3.metric("Posiciones Abiertas", f"{len(st.session_state.cartera_bot)} / 10")
+    cm3.metric("Posiciones Abiertas", f"{len(st.session_state.cartera_bot)}")
     
     if st.session_state.cartera_bot:
         st.table(pd.DataFrame(st.session_state.cartera_bot))
         if st.button("🗑️ Resetear Cuenta de Simulación", key="btn_clear_sim_state"):
             st.session_state.efectivo = 30000.0
             st.session_state.cartera_bot = []
+            st.session_state.consecutivas_maximas = 0
             st.rerun()
     else:
-        st.caption("Estrategia en liquidez total. El algoritmo monitoriza el mercado en espera de parámetros de entrada.")
+        st.info("Estrategia en liquidez total. El algoritmo monitoriza el mercado en espera de parámetros de entrada.")
 
 # ---------------------------------------------------------
 # PESTAÑA 3: GESTIÓN DE CONFIGURACIÓN
