@@ -6,7 +6,7 @@ import numpy as np
 # Configuración de página
 st.set_page_config(page_title="Terminal Financiero", layout="wide")
 
-# --- INITIALIZATION OF LISTS IN SESSION STATE (Para que sean editables) ---
+# --- CONTROL DE LISTAS EDITABLES EN SESIÓN ---
 if "listas_seguimiento" not in st.session_state:
     st.session_state.listas_seguimiento = {
         "Robótica/IA": ["ISRG", "ABB", "6861.T", "SYM", "SERV", "TER", "6954.T", "SYK", "CGNX", "AUR", "MBLY"],
@@ -14,8 +14,8 @@ if "listas_seguimiento" not in st.session_state:
         "Semicond": ["ASML", "AVGO", "ARM", "SMCI", "MU"]
     }
 
-# --- CÓDIGO COMÚN: ANALÍTICA TÉCNICA ---
-def analizar_activo(ticker, regla_broker="Bolero/Revolut"):
+# --- MOTOR DE ANALÍTICA TÉCNICA Y FILTRO DE BRÓKER ---
+def analizar_activo(ticker, forzar_ing=False):
     try:
         tk = yf.Ticker(ticker)
         info = tk.info
@@ -27,40 +27,51 @@ def analizar_activo(ticker, regla_broker="Bolero/Revolut"):
         dividend_yield = info.get('dividendYield', 0)
         if dividend_yield is None: dividend_yield = 0
         
-        if "ING" in regla_broker and dividend_yield > 0:
-            return {"estado": "DESCARTADO", "motivo": "Filtro ING: Paga dividendos."}
-            
         precio = df['Close'].iloc[-1]
         sma200 = df['Close'].rolling(window=200).mean().iloc[-1]
         
+        # Cálculo de RSI (14 días)
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rsi = (100 - (100 / (1 + (gain / loss)))).iloc[-1]
         
+        # Asignación inteligente de bróker basada en dividendos
+        if dividend_yield == 0:
+            broker_optimo = "ING (0% Div) o Bolero/Revolut"
+            es_apto_ing = True
+        else:
+            broker_optimo = "Bolero / Revolut (Paga Dividendo)"
+            es_apto_ing = False
+            
+        # Si el bot requiere obligatoriamente ING y paga dividendos, se descarta SOLO para ese destino
+        if forzar_ing and not es_apto_ing:
+            return {"estado": "DESCARTADO", "motivo": "Filtro estricto ING: Paga dividendos."}
+            
+        # Regla técnica del radar (Tendencia + Descanso/Giro)
         if precio > sma200 and 45 <= rsi <= 55:
             estado = "COMPRAR"
-            motivo = f"Punto óptimo. RSI sano ({rsi:.1f}) y tendencia alcista."
+            motivo = f"Punto óptimo. RSI sano ({rsi:.1f}) en tendencia alcista principal."
         else:
             estado = "ESPERAR"
-            motivo = "Precio extendido o sin fuerza."
+            motivo = f"RSI en {rsi:.1f}. Precio extendido o sin momentum claro."
             
-        return {"estado": estado, "precio": precio, "rsi": rsi, "yield": dividend_yield, "motivo": motivo}
+        return {"estado": estado, "precio": precio, "rsi": rsi, "yield": dividend_yield, "broker": broker_optimo, "motivo": motivo}
     except:
         return None
 
 # =========================================================
-# CREACIÓN DE LAS TRES PESTAÑAS PRINCIPALES
+# DISEÑO DE LA INTERFAZ DE TRES PESTAÑAS
 # =========================================================
 st.title("🎛️ Centro de Mando Financiero")
 pestana1, pestana2, pestana3 = st.tabs([
     "🔍 Escáner Manual de Listas", 
-    "🤖 Bot Autónomo Robótica 30k",
+    "🤖 Bot Masivo Robótica 30k",
     "⚙️ Configuración de Listas"
 ])
 
 # =========================================================
-# CONTENIDO DE LA PESTAÑA 1: ESCÁNER MANUAL
+# PESTAÑA 1: ESCÁNER MANUAL (REORGANIZADO CON BOTONES SEPARADOS)
 # =========================================================
 with pestana1:
     st.header("🔍 Escáner Manual de Mercado")
@@ -71,8 +82,8 @@ with pestana1:
     
     with col_individual:
         st.subheader("🔍 Opción 1: Análisis Individual")
-        ticker_individual = st.text_input("Escribe el ticker (ej: TSLA, AAPL):", value="", key="input_manual_ind").upper().strip()
-        btn_individual = st.button("📊 Analizar esta Acción Solamente", key="btn_manual_ind")
+        ticker_individual = st.text_input("Escribe el ticker (ej: TSLA, AAPL):", value="", key="manual_ind").upper().strip()
+        btn_individual = st.button("📊 Analizar esta Acción Solamente", key="btn_ind")
         
         if btn_individual and ticker_individual:
             st.info(f"Analizando {ticker_individual}...")
@@ -83,14 +94,14 @@ with pestana1:
                 c_p.metric("Precio Actual", f"{res_ind['precio']:.2f} $")
                 c_r.metric("RSI (14 días)", f"{res_ind['rsi']:.1f}")
                 c_e.metric("Estado Técnico", res_ind['estado'])
-                st.info(f"**Nota:** {res_ind['motivo']}")
+                st.info(f"**Bróker sugerido:** {res_ind['broker']}\n\n**Nota:** {res_ind['motivo']}")
             else:
                 st.error("No se han encontrado datos. Revisa el ticker.")
                 
     with col_listas:
         st.subheader("📋 Opción 2: Listas Predeterminadas")
-        lista_sel = st.selectbox("Selecciona la lista:", list(st.session_state.listas_seguimiento.keys()), key="select_manual_lista")
-        btn_listas = st.button("🚀 Ejecutar Análisis de la Lista", key="btn_manual_lista")
+        lista_sel = st.selectbox("Selecciona la lista:", list(st.session_state.listas_seguimiento.keys()), key="manual_lista")
+        btn_listas = st.button("🚀 Ejecutar Análisis de la Lista", key="btn_lista")
         
         if btn_listas:
             st.info(f"Escaneando lista: {lista_sel}...")
@@ -100,138 +111,147 @@ with pestana1:
                 if res:
                     resultados.append({
                         "Ticker": t, "Precio": f"{res['precio']:.2f}$", 
-                        "RSI": round(res['rsi'], 1), "Estado": res['estado'], "Nota": res['motivo']
+                        "RSI": round(res['rsi'], 1), "Estado": res['estado'], "Bróker Destino": res['broker'], "Nota": res['motivo']
                     })
             if resultados:
                 st.table(pd.DataFrame(resultados))
             else:
-                st.warning("Esta lista está vacía actualmente.")
+                st.warning("Esta lista está vacía.")
 
 # =========================================================
-# CONTENIDO DE LA PESTAÑA 2: BOT AUTÓNOMO 30K
+# PESTAÑA 2: EL BOT MASIVO REESTRUCTURADO (65 COMPAÑÍAS)
 # =========================================================
 with pestana2:
-    st.header("🤖 Bot Autónomo de Inversión (Ecosistema Robótica)")
-    st.write("Gestión simulada de 30.000€ centrada en el hardware y cadena de valor de la Robótica.")
+    st.header("🤖 Bot de Gestión Activa (Radar Ampliado de 65 Líderes)")
+    st.write("Escanea el ecosistema global ejecutable en tus brókers y autogestiona un presupuesto de 30.000€.")
     st.markdown("---")
     
-    ESTRUCTURA_CARTERA = {
-        "Slot 1: Robótica Quirúrgica/Médica": {"tickers": ["ISRG", "SYK"], "broker": "Bolero/Revolut"},
-        "Slot 2: Automatización y Almacén": {"tickers": ["SYM", "ABB"], "broker": "ING (0% Div)"},
-        "Slot 3: Fotónica y Visión Artificial": {"tickers": ["6861.T", "CGNX"], "broker": "Bolero/Revolut"},
-        "Slot 4: Litografía (Chips de Robots)": {"tickers": ["ASML"], "broker": "Bolero/Revolut"},
-        "Slot 5: Procesamiento Gráfico/Edge": {"tickers": ["NVDA", "AMD"], "broker": "ING (0% Div)"},
-        "Slot 6: Sensores e Infraestructura": {"tickers": ["FANUC.F", "TER"], "broker": "Bolero/Revolut"},
-        "Slot 7: Software de Diseño de Hardware": {"tickers": ["CDNS", "SNPS"], "broker": "ING (0% Div)"},
-        "Slot 8: Semiconductores de Potencia": {"tickers": ["WOLF", "ON"], "broker": "ING (0% Div)"},
-        "Slot 9: Vehículos Autónomos y LiDAR": {"tickers": ["MBLY", "AUR"], "broker": "Bolero/Revolut"},
-        "Slot 10: Componentes Críticos/Líderes": {"tickers": ["AMAT", "LRCX"], "broker": "Bolero/Revolut"}
+    # Base de datos indexada por industria para la regla de diversificación (máx 2 por sector)
+    UNIVERSO_EXPANDIDO = {
+        "Cerebro / Procesamiento": ["NVDA", "AMD", "QCOM", "INTC", "AVGO", "MRVL", "ADI", "TXN", "MU", "SMCI"],
+        "Robótica Quirúrgica / Salud": ["ISRG", "SYK", "ZBH", "MDT", "BSX", "GMED", "TFX"],
+        "Automatización / Logística": ["SYM", "ABB", "SIE.DE", "ROK", "GWW", "FAST", "AZO", "SNA", "GE"],
+        "Fotónica / Sensórica / Visión": ["CGNX", "KEYS", "ROV", "PH", "AME", "TDY", "KYCCF"],
+        "Software Industrial / EDA": ["CDNS", "SNPS", "ANSS", "PTC", "ADSK", "DSY.PA", "SAP.DE"],
+        "Semiconductores Potencia / Energía": ["WOLF", "ON", "NXPI", "MPWR", "MCHP", "IFX.DE", "STM"],
+        "Litografía / Equipos Sala Blanca": ["ASML", "ASM.AS", "AMAT", "LRCX", "KLAC", "TER", "ENTG", "MKSI", "COHR"],
+        "Sistemas Autónomos / LiDAR": ["MBLY", "AUR", "LAZR", "APTIV"]
     }
     
-    st.subheader("🛡️ Filtro de Cartera Real")
-    exclusiones_input = st.text_input("Introduce los tickers que YA tienes en la realidad (separados por comas):", value="", key="input_bot_exclusiones").upper()
+    # 1. Filtro de exclusión por cartera real
+    st.subheader("🛡️ Exclusión de Cartera Real")
+    exclusiones_input = st.text_input("Introduce las acciones que YA tienes compradas (separadas por comas, ej: NVDA, ASML):", value="", key="bot_excl").upper()
     lista_exclusiones = [t.strip() for t in exclusiones_input.split(",") if t.strip()]
     
     if lista_exclusiones:
-        st.warning(f"Omitiendo de las compras del bot: {', '.join(lista_exclusiones)}")
+        st.warning(f"🚫 Omitiendo automáticamente del radar: {', '.join(lista_exclusiones)}")
         
+    # Inicializar la cartera del bot en memoria permanente
     if 'efectivo' not in st.session_state:
         st.session_state.efectivo = 30000.0
-        st.session_state.cartera = {}
+        st.session_state.cartera_bot = []  # Lista de dicts comprados
         
     st.markdown("---")
     c1, c2, c3 = st.columns(3)
     c1.metric("Presupuesto Inicial", "30.000 €")
     c2.metric("Efectivo Disponible", f"{st.session_state.efectivo:,.2f} €")
-    c3.metric("Slots Ocupados", f"{len(st.session_state.cartera)} / 10")
+    c3.metric("Posiciones Abiertas", f"{len(st.session_state.cartera_bot)} / 10")
     
-    if st.button("🚀 Activar Escáner Diario del Bot", key="btn_activar_bot"):
+    # Botón de ejecución diaria
+    if st.button("🚀 Activar Escáner de Mercado Abierto", key="btn_run_bot"):
         reporte_movimientos = []
-        for slot, configuracion in ESTRUCTURA_CARTERA.items():
-            if slot in st.session_state.cartera: continue
+        
+        # Contar cuántas posiciones tenemos ya por industria para no saturar
+        conteo_industrias = {}
+        for pos in st.session_state.cartera_bot:
+            ind = pos["Industria"]
+            conteo_industrias[ind] = conteo_industrias.get(ind, 0) + 1
             
-            comprado_en_este_slot = False
-            for ticker in configuracion["tickers"]:
-                if comprado_en_este_slot: break
+        # Recorremos el universo completo buscando relevos u oportunidades
+        for industria, tickers in UNIVERSO_EXPANDIDO.items():
+            # Si ya tenemos 2 posiciones de esta industria, saltamos a la siguiente rama
+            if conteo_industrias.get(industria, 0) >= 2:
+                continue
                 
-                if ticker in lista_exclusiones:
-                    reporte_movimientos.append({
-                        "Slot": slot, "Acción": f"EXCLUIDO {ticker}", 
-                        "Broker Destino": configuracion["broker"], "Reseña Técnica": "Ya en posesión en cartera real."
-                    })
+            for ticker in tickers:
+                # Comprobación de límites generales del bot
+                if len(st.session_state.cartera_bot) >= 10 or st.session_state.efectivo < 3000:
+                    break
+                    
+                # Regla 1: Sustitución automática si ya está en cartera real o en la simulada
+                if ticker in lista_exclusiones or any(p["Ticker"] == ticker for p in st.session_state.cartera_bot):
                     continue
+                    
+                # Analizar activo con su lógica técnica y fiscal
+                ans = analizar_activo(ticker)
                 
-                ans = analizar_activo(ticker, configuracion["broker"])
                 if ans and ans["estado"] == "COMPRAR":
-                    if st.session_state.efectivo >= 3000:
-                        st.session_state.cartera[slot] = {
-                            "Ticker": ticker, "Precio Entrada": ans["precio"], 
-                            "Acciones": round(3000 / ans["precio"], 2), "Broker": configuracion["broker"]
-                        }
-                        st.session_state.efectivo -= 3000
-                        reporte_movimientos.append({
-                            "Slot": slot, "Acción": f"COMPRADO {ticker}", 
-                            "Broker Destino": configuracion["broker"], "Reseña Técnica": ans["motivo"]
-                        })
-                        comprado_en_este_slot = True
-                elif ans and ans["estado"] == "DESCARTADO":
-                    reporte_movimientos.append({
-                        "Slot": slot, "Acción": f"Ignorar {ticker}", 
-                        "Broker Destino": configuracion["broker"], "Reseña Técnica": ans["motivo"]
+                    # Simular la compra en el slot disponible
+                    st.session_state.cartera_bot.append({
+                        "Ticker": ticker,
+                        "Industria": industria,
+                        "Precio Entrada": f"{ans['precio']:.2f} $",
+                        "RSI": round(ans['rsi'], 1),
+                        "Bróker Destino": ans["broker"]
                     })
+                    st.session_state.efectivo -= 3000
+                    conteo_industrias[industria] = conteo_industrias.get(industria, 0) + 1
+                    
+                    reporte_movimientos.append({
+                        "Acción": f"COMPRADO {ticker}",
+                        "Subsector": industria,
+                        "Destino Recomendado": ans["broker"],
+                        "Motivo Técnico": ans["motivo"]
+                    })
+                    # Pasamos a la siguiente industria para forzar la diversificación
+                    break
                     
         if reporte_movimientos:
-            st.subheader("📝 Bitácora de Movimientos del Bot")
+            st.subheader("📝 Bitácora de Operaciones de Hoy")
             st.table(pd.DataFrame(reporte_movimientos))
+        else:
+            st.info("El escáner no ha encontrado nuevos activos que cumplan el patrón exacto de giro técnico hoy (o la cartera está llena).")
             
     st.markdown("---")
-    st.subheader("📊 Estado de la Cartera Autónoma (Simulada)")
-    if st.session_state.cartera:
-        st.table(pd.DataFrame.from_dict(st.session_state.cartera, orient='index'))
+    st.subheader("📊 Estado Actual de la Cartera del Bot (Simulada)")
+    if st.session_state.cartera_bot:
+        st.table(pd.DataFrame(st.session_state.cartera_bot))
+        if st.button("🗑️ Reiniciar Cartera del Bot (Volver a 100% Liquidez)"):
+            st.session_state.efectivo = 30000.0
+            st.session_state.cartera_bot = []
+            st.rerun()
     else:
-        st.write("Tu cartera está en 100% liquidez esperando oportunidades.")
+        st.write("Cartera vacía. Pulsa el botón superior para poner al bot a escanear el mercado.")
 
 # =========================================================
-# NUEVA PESTAÑA 3: CONFIGURACIÓN Y EDICIÓN DE LISTAS
+# PESTAÑA 3: GESTOR DE LISTAS MANUALES
 # =========================================================
 with pestana3:
     st.header("⚙️ Gestor de Listas de Seguimiento")
-    st.write("Añade o elimina acciones de tus listas predeterminadas fácilmente.")
+    st.write("Modifica los componentes de tus listas para el Escáner Manual.")
     st.markdown("---")
     
-    # 1. Selector de la lista a editar
-    lista_a_modificar = st.selectbox("Selecciona la lista que deseas gestionar:", list(st.session_state.listas_seguimiento.keys()), key="select_edicion")
-    
-    # Mostrar componentes actuales de la lista
+    lista_a_modificar = st.selectbox("Selecciona la lista a gestionar:", list(st.session_state.listas_seguimiento.keys()), key="edit_lista")
     acciones_actuales = st.session_state.listas_seguimiento[lista_a_modificar]
-    st.write(f"**Acciones actuales en '{lista_a_modificar}':** {', '.join(acciones_actuales) if acciones_actuales else 'Lista vacía'}")
+    st.write(f"**Acciones en '{lista_a_modificar}':** {', '.join(acciones_actuales) if acciones_actuales else 'Lista vacía'}")
     
     st.markdown("---")
     col_add, col_del = st.columns(2)
     
-    # Bloque para AÑADIR Tickers
     with col_add:
         st.subheader("➕ Añadir Acción")
-        nuevo_ticker = st.text_input("Escribe el ticker a añadir (ej: AMD, PLTR):", value="", key="input_add_ticker").upper().strip()
-        if st.button("✅ Añadir a la Lista", key="btn_add_ticker"):
-            if nuevo_ticker:
-                if nuevo_ticker not in st.session_state.listas_seguimiento[lista_a_modificar]:
-                    st.session_state.listas_seguimiento[lista_a_modificar].append(nuevo_ticker)
-                    st.success(f"¡{nuevo_ticker} se ha añadido correctamente a '{lista_a_modificar}'!")
-                    st.rerun()  # Recarga la app para aplicar el cambio visual inmediato
-                else:
-                    st.warning(f"El ticker {nuevo_ticker} ya existe en esta lista.")
-            else:
-                st.error("Por favor, escribe un ticker válido.")
+        nuevo_ticker = st.text_input("Ticker a añadir:", value="", key="add_t").upper().strip()
+        if st.button("✅ Confirmar Añadir", key="btn_add"):
+            if nuevo_ticker and nuevo_ticker not in acciones_actuales:
+                st.session_state.listas_seguimiento[lista_a_modificar].append(nuevo_ticker)
+                st.success(f"{nuevo_ticker} añadido.")
+                st.rerun()
                 
-    # Bloque para BORRAR Tickers
     with col_del:
         st.subheader("❌ Eliminar Acción")
         if acciones_actuales:
-            ticker_a_borrar = st.selectbox("Selecciona qué ticker quieres quitar:", acciones_actuales, key="select_del_ticker")
-            if st.button("🗑️ Borrar de la Lista", key="btn_del_ticker"):
+            ticker_a_borrar = st.selectbox("Ticker a quitar:", acciones_actuales, key="del_t")
+            if st.button("🗑️ Confirmar Borrado", key="btn_del"):
                 st.session_state.listas_seguimiento[lista_a_modificar].remove(ticker_a_borrar)
-                st.success(f"¡{ticker_a_borrar} eliminado de '{lista_a_modificar}'!")
-                st.rerun()  # Recarga la app para aplicar el cambio visual inmediato
-        else:
-            st.write("No hay acciones para borrar en esta lista.")
+                st.success(f"{ticker_a_borrar} eliminado.")
+                st.rerun()
