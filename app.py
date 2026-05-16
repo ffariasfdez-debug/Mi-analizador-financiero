@@ -50,52 +50,61 @@ st.title("🎛️ Centro de Mando Financiero")
 pestana1, pestana2 = st.tabs(["🔍 Escáner Manual de Listas", "🤖 Bot Autónomo Robótica 30k"])
 
 # ==========================================
-# PESTAÑA 1: EL ESCÁNER MANUAL (COMPLETO)
+# PESTAÑA 1: EL ESCÁNER MANUAL (REORGANIZADO)
 # ==========================================
 with pestana1:
     st.header("🔍 Escáner Manual de Mercado")
-    st.write("Analiza tus listas predeterminadas o busca un activo individual en tiempo real.")
-    
-    # 1. BUSCADOR INDIVIDUAL (PUESTO ARRIBA DEL TODO PARA TU COMODIDAD)
-    st.subheader("🔍 Opción A: Análisis de Acción Individual")
-    ticker_individual = st.text_input("Escribe el ticker de la acción y pulsa INTRO (ej: TSLA, AAPL, ASML):", value="").upper().strip()
-    
-    # Analiza automáticamente en cuanto escribes, sin necesidad de botón
-    if ticker_individual:
-        st.info(f"Analizando {ticker_individual} en tiempo real...")
-        res_ind = analizar_activo(ticker_individual)
-        if res_ind:
-            st.success(f"**Análisis Individual para: {ticker_individual}**")
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Precio Actual", f"{res_ind['precio']:.2f} $")
-            col2.metric("RSI (14 días)", f"{res_ind['rsi']:.1f}")
-            col3.metric("Estado Técnico", res_ind['estado'])
-            st.info(f"**Nota del analista:** {res_ind['motivo']}")
-        else:
-            st.error("No se han encontrado datos para ese ticker. Asegúrate de que cotiza en EEUU o Europa y está bien escrito.")
-            
+    st.write("Elige si prefieres analizar una acción suelta o una de tus listas fijas de seguimiento.")
     st.markdown("---")
     
-    # 2. ANALIZAR LISTAS COMPLETAS
-    st.subheader("📋 Opción B: Escanear Listas Predeterminadas")
-    listas_seguimiento = {
-        "Robótica/IA": ["ISRG", "ABB", "6861.T", "SYM", "SERV", "TER", "6954.T", "SYK", "CGNX", "AUR", "MBLY"],
-        "Tecnología": ["NVDA", "TSLA", "AAPL", "MSFT", "AMD"],
-        "Semicond": ["ASML", "AVGO", "ARM", "SMCI", "MU"]
-    }
+    # Creamos dos columnas para separar visualmente las dos herramientas por completo
+    col_individual, col_listas = st.columns(2)
     
-    lista_sel = st.selectbox("Selecciona la lista a escanear:", list(listas_seguimiento.keys()))
-    
-    if st.button("Ejecutar Análisis de Lista"):
-        resultados = []
-        for t in listas_seguimiento[lista_sel]:
-            res = analizar_activo(t)
-            if res:
-                resultados.append({
-                    "Ticker": t, "Precio": f"{res['precio']:.2f}$", 
-                    "RSI": round(res['rsi'], 1), "Estado": res['estado'], "Nota": res['motivo']
-                })
-        st.table(pd.DataFrame(resultados))
+    # --- COLUMNA IZQUIERDA: BÚSQUEDA INDIVIDUAL ---
+    with col_individual:
+        st.subheader("🔍 Opción 1: Análisis Individual")
+        ticker_individual = st.text_input("Escribe el ticker de la acción (ej: TSLA, AAPL, ASML):", value="", key="txt_ind").upper().strip()
+        btn_individual = st.button("📊 Analizar esta Acción Solamente")
+        
+        # Solo se ejecuta si el usuario pulsa el botón de esta columna o da a Intro en la caja
+        if ticker_individual and (btn_individual or ticker_individual != ""):
+            # Esta condición evita que salte el análisis vacío al cargar la página
+            if btn_individual:
+                st.info(f"Analizando {ticker_individual} en tiempo real...")
+                res_ind = analizar_activo(ticker_individual)
+                if res_ind:
+                    st.success(f"**Resultado para: {ticker_individual}**")
+                    c_p, c_r, c_e = st.columns(3)
+                    c_p.metric("Precio Actual", f"{res_ind['precio']:.2f} $")
+                    c_r.metric("RSI (14 días)", f"{res_ind['rsi']:.1f}")
+                    c_e.metric("Estado Técnico", res_ind['estado'])
+                    st.info(f"**Nota:** {res_ind['motivo']}")
+                else:
+                    st.error("No se han encontrado datos. Revisa si el ticker es correcto.")
+                    
+    # --- COLUMNA DERECHA: ESCÁNER DE LISTAS ---
+    with col_listas:
+        st.subheader("📋 Opción 2: Listas Predeterminadas")
+        listas_seguimiento = {
+            "Robótica/IA": ["ISRG", "ABB", "6861.T", "SYM", "SERV", "TER", "6954.T", "SYK", "CGNX", "AUR", "MBLY"],
+            "Tecnología": ["NVDA", "TSLA", "AAPL", "MSFT", "AMD"],
+            "Semicond": ["ASML", "AVGO", "ARM", "SMCI", "MU"]
+        }
+        lista_sel = st.selectbox("Selecciona qué lista quieres revisar:", list(listas_seguimiento.keys()))
+        btn_listas = st.button("🚀 Ejecutar Análisis de la Lista")
+        
+        # Solo se ejecuta si se pulsa el botón de esta columna
+        if btn_listas:
+            st.info(f"Escaneando la lista completa: {lista_sel}...")
+            resultados = []
+            for t in listas_seguimiento[lista_sel]:
+                res = analizar_activo(t)
+                if res:
+                    resultados.append({
+                        "Ticker": t, "Precio": f"{res['precio']:.2f}$", 
+                        "RSI": round(res['rsi'], 1), "Estado": res['estado'], "Nota": res['motivo']
+                    })
+            st.table(pd.DataFrame(resultados))
 
 # ==========================================
 # PESTAÑA 2: EL BOT AUTÓNOMO DE 30K (ROBÓTICA)
