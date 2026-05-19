@@ -26,7 +26,7 @@ listas_guardadas = {
 }
 
 # =========================================================
-# PESTAÑA 1: BOT MASIVO AUTOMÁTICO 30K (CON RESUMEN DE PREVISIONES)
+# PESTAÑA 1: BOT MASIVO AUTOMÁTICO 30K
 # =========================================================
 with pestaña1:
     st.subheader("🤖 Algoritmo de Gestión Autónoma por Momentum Técnico")
@@ -54,19 +54,19 @@ with pestaña1:
             rendimiento = round(((precio_actual - c["Precio Compra"]) / c["Precio Compra"]) * 100, 2)
             flecha = "🔼 +" if rendimiento >= 0 else "🔽 "
             
-            # --- NUEVA INFORMACIÓN EXTRA PARA AYUDARTE A DECIDIR ---
+            # --- SEMÁFORO EN LA TABLA ---
             if rendimiento > 1.0:
-                prev_corto = "🟢 FUERTE COMPRA"
-                prev_medio = "📈 Tendencia Alcista Sólida"
-                accion_sugerida = "Mantener y dejar correr ganancias."
+                semaforo_tabla = "🟢 COMPRAR / AÑADIR"
+                prev_medio = "📈 Tendencia Alcista Fuerte"
+                accion_sugerida = "Dejar correr beneficios. Momentum óptimo."
             elif rendimiento < -1.0:
-                prev_corto = "🚨 GIRO / SOPORTE"
-                prev_medio = "📉 Corrección Temporal"
-                accion_sugerida = "Vigilar soporte para ampliar posición."
+                semaforo_tabla = "🔴 EVITAR / RECORTE"
+                prev_medio = "📉 Corrección de Corto"
+                accion_sugerida = "No entrar todavía. Esperar que toque soporte."
             else:
-                prev_corto = "🟡 NEUTRAL"
-                prev_medio = "↔️ Consolidación de Precio"
-                accion_sugerida = "Sin cambios. Esperar señal de volumen."
+                semaforo_tabla = "🟡 MANTENER"
+                prev_medio = "↔️ Lateral / Consolidación"
+                accion_sugerida = "Mantener posición actual de simulación."
 
             tabla_final.append({
                 "Ticker": c["Ticker"],
@@ -74,7 +74,7 @@ with pestaña1:
                 "Precio Compra": f"{c['Precio Compra']:.2f}",
                 "Precio Actual": f"{precio_actual:.2f}",
                 "Rendimiento": f"{flecha}{rendimiento}%",
-                "Previsión Corto Plazo": prev_corto,
+                "Semáforo Corto Plazo": semaforo_tabla,
                 "Previsión Medio Plazo": prev_medio,
                 "Consejo del Radar": accion_sugerida,
                 "Broker": c["Broker"]
@@ -95,7 +95,7 @@ with pestaña1:
     st.dataframe(df_bot, use_container_width=True)
 
 # =========================================================
-# PESTAÑA 2: ANALIZADOR TÉCNICO CON GRÁFICOS COMPATIBLES
+# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO (CON SEMÁFORO LUMINOSO)
 # =========================================================
 with pestaña2:
     st.subheader("🔍 Buscador de Acciones con Gráficos de Tendencia")
@@ -118,7 +118,7 @@ with pestaña2:
 
     st.write("---")
     st.write("### 🔍 Análisis Detallado Individual")
-    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos y Recomendación (ej: LITE, COHR, AMD):", "LITE")
+    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos y Recomendación (ej: LITE, TSM, AMD):", "TSM")
     
     if accion:
         accion = accion.upper()
@@ -127,7 +127,6 @@ with pestaña2:
             datos_hist = ticker_obj.history(period="30d")
             
             if not datos_hist.empty:
-                # GRÁFICO SEGURO DE LÍNEAS NATIVO (Este no falla nunca)
                 st.write(f"**📉 Gráfico de Evolución del Precio (Últimos 30 días) - {accion}**")
                 st.line_chart(datos_hist['Close'])
                 
@@ -135,7 +134,23 @@ with pestaña2:
                 precio_max = datos_hist['High'].max()
                 precio_min = datos_hist['Low'].min()
                 
-                # RECOMENDACIONES DETALLADAS DE APOYO
+                # CÁLCULO DEL ESTADO DEL SEMÁFORO INDIVIDUAL
+                # Si cae más de un 10% desde máximos del mes, entra en aviso de soporte
+                if precio_hoy < (precio_max * 0.90):
+                    estado_semaforo = "🔴 ESPERAR / EVITAR ENTRADA"
+                    tipo_alerta = "error" # Pinta el cuadro de color rojo en Streamlit
+                    consejo_texto = f"El valor está corrigiendo con fuerza. El semáforo está en ROJO para compras inmediatas. Deja que busque apoyo cerca de su mínimo mensual de **{precio_min:.2f}** antes de plantear una entrada por momentum."
+                # Si está cerca de máximos, tiene momentum alcista fuerte
+                elif precio_hoy > (precio_max * 0.96):
+                    estado_semaforo = "🟢 COMPRAR (MOMENTUM ACTIVO)"
+                    tipo_alerta = "success" # Pinta el cuadro de color verde en Streamlit
+                    consejo_texto = f"Fuerza relativa alcista impecable. El capital institucional está empujando el precio. El semáforo está en VERDE; apto para entrar o mantener buscando la continuación de la tendencia."
+                else:
+                    estado_semaforo = "🟡 MANTENER / NEUTRAL"
+                    tipo_alerta = "warning" # Pinta el cuadro de color amarillo en Streamlit
+                    consejo_texto = "El precio se encuentra atrapado en zona de consolidación lateral. El semáforo está en AMARILLO. No hay señal clara de entrada nueva; apto para mantener si ya estás dentro."
+
+                # PINTAR LOS PANALES EN PANTALLA
                 col_a, col_b = st.columns(2)
                 with col_a:
                     st.info(f"""
@@ -144,23 +159,21 @@ with pestaña2:
                     * **Máximo del Mes:** {precio_max:.2f}
                     * **Mínimo del Mes (Soporte):** {precio_min:.2f}
                     """)
+                
                 with col_b:
-                    if precio_hoy < (precio_max * 0.88):
-                        st.warning(f"""
-                        **🎯 Previsión e Indicación del Radar:**
-                        * **Previsión Corto Plazo:** Sobreventa técnica (Frenazo por corrección).
-                        * **Estrategia Recomendada:** Mantener en radar. El precio se acerca al suelo mensual de **{precio_min:.2f}**. Si los flujos institucionales estabilizan el volumen, el rebote por momentum ofrecerá una entrada clara a medio plazo.
-                        """)
+                    st.write("**🚦 Semáforo de Operación:**")
+                    # Este comando dibuja el cuadro de color según el semáforo (Verde, Amarillo o Rojo)
+                    if tipo_alerta == "success":
+                        st.success(f"### {estado_semaforo}\n\n{consejo_texto}")
+                    elif tipo_alerta == "warning":
+                        st.sidebar.write("") # Espaciador
+                        st.warning(f"### {estado_semaforo}\n\n{consejo_texto}")
                     else:
-                        st.success(f"""
-                        **🎯 Previsión e Indicación del Radar:**
-                        * **Previsión Corto Plazo:** Fuerza relativa alcista activa.
-                        * **Estrategia Recomendada:** Posición segura para mantener. El capital institucional sigue empujando el valor hacia los objetivos superiores.
-                        """)
+                        st.error(f"### {estado_semaforo}\n\n{consejo_texto}")
             else:
-                st.error("No se han localizado datos consolidados para este valor.")
+                st.error("No se han localizado datos para este Ticker.")
         except:
-            st.error("Error al procesar el gráfico en vivo.")
+            st.error("Error al conectar con los servidores de bolsa.")
 
 # =========================================================
 # PESTAÑA 3: CONFIGURACIÓN DE LISTAS PREGRABADAS
