@@ -11,19 +11,22 @@ st.title("🎛️ Centro de Mando Financiero Pro")
 st.write(f"**Estado del Sistema:** Conectado en Vivo | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 st.write("---")
 
+# --- INICIALIZACIÓN DEL DISCO DURO TEMPORAL (SESSION STATE) ---
+# Esto evita que las listas nuevas se borren al refrescar o cambiar de pestaña
+if "mis_listas" not in st.session_state:
+    st.session_state["mis_listas"] = {
+        "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML"],
+        "Robótica": ["ADI", "AME", "ISRG", "CGNX"],
+        "Fotónica": ["IPGP", "LITE", "COHR"],
+        "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR"]
+    }
+
 # --- MENÚ DE PESTAÑAS PRINCIPALES ---
 pestaña1, pestaña2, pestaña3 = st.tabs([
     "🤖 Bot Masivo Automático 30k", 
     "🔍 Analizador Técnico Avanzado", 
     "⚙️ Configuración de Listas Pregrabadas"
 ])
-
-listas_guardadas = {
-    "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML"],
-    "Robótica": ["ADI", "AME", "ISRG", "CGNX"],
-    "Fotónica": ["IPGP", "LITE", "COHR"],
-    "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR"]
-}
 
 # =========================================================
 # PESTAÑA 1: BOT MASIVO AUTOMÁTICO 30K
@@ -56,7 +59,6 @@ with pestaña1:
             rendimiento = round(((precio_actual - c["Precio Compra"]) / c["Precio Compra"]) * 100, 2)
             flecha = "🔼 +" if rendimiento >= 0 else "🔽 "
             
-            # Cálculo del semáforo dinámico real basado en tendencia de mercado
             if precio_actual > (media_tendencia * 1.02):
                 semaforo_tabla = "🟢 COMPRAR / AÑADIR"
                 prev_medio = "📈 Tendencia Alcista Fuerte"
@@ -97,16 +99,18 @@ with pestaña1:
     st.dataframe(df_bot, use_container_width=True)
 
 # =========================================================
-# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO (CON SEMÁFOROS REALES)
+# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO
 # =========================================================
 with pestaña2:
     st.subheader("🔍 Buscador de Acciones con Gráficos de Tendencia")
     
     st.write("### 📁 Cargar una Lista de Seguimiento Completa")
-    lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", ["Ninguna"] + list(listas_guardadas.keys()))
+    # Vinculamos el selector con las listas que están en el "disco duro" dinámico
+    opciones_selector = ["Ninguna"] + list(st.session_state["mis_listas"].keys())
+    lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", opciones_selector)
     
     if lista_sel != "Ninguna":
-        tickers_lista = listas_guardadas[lista_sel]
+        tickers_lista = st.session_state["mis_listas"][lista_sel]
         datos_lista = []
         for tick in tickers_lista:
             try:
@@ -151,7 +155,6 @@ with pestaña2:
                 precio_min = datos_hist['Low'].min()
                 media_movil = datos_hist['Close'].mean()
                 
-                # CÁLCULO DE LA CONDICIÓN TÉCNICA DEL SEMÁFORO INDIVIDUAL CONTRA LA TENDENCIA
                 if precio_hoy < (media_movil * 0.98):
                     estado_semaforo = "🔴 EVITAR / ESPERAR GIRO TÉCNICO"
                     tipo_alerta = "rojo"
@@ -165,7 +168,6 @@ with pestaña2:
                     tipo_alerta = "amarillo"
                     consejo_texto = f"El precio está oscilando plano alrededor de su media de {media_movil:.2f}. Zona neutral. Apto para mantener la posición si estás dentro, pero espera una ruptura para comprar más."
 
-                # PINTAR EN PANTALLA EN DOS COLUMNAS COMO EN TU CAPTURA
                 col_a, col_b = st.columns(2)
                 with col_a:
                     st.info(f"""
@@ -189,11 +191,48 @@ with pestaña2:
             st.error("Error al conectar con los servidores de bolsa.")
 
 # =========================================================
-# PESTAÑA 3: CONFIGURACIÓN DE LISTAS PREGRABADAS
+# PESTAÑA 3: CONFIGURACIÓN Y CREACIÓN DE LISTAS
 # =========================================================
 with pestaña3:
-    st.subheader("⚙️ Modificar Valores de las Listas Pregrabadas")
-    lista_editar = st.selectbox("Selecciona qué lista quieres gestionar:", list(listas_guardadas.keys()))
-    st.text_area("Valores incluidos actuales:", ", ".join(listas_guardadas[lista_editar]))
-    if st.button("Guardar Cambios"):
-        st.success("Configuración consolidada de forma segura.")
+    st.subheader("⚙️ Gestión de Listas Pregrabadas")
+    
+    # DIVIDIMOS LA PANTALLA EN DOS: IZQUIERDA PARA EDITAR, DERECHA PARA CREAR NUEVAS
+    col_izquierda, col_derecha = st.columns(2)
+    
+    with col_izquierda:
+        st.write("### 📝 Editar o Consultar Listas Existentes")
+        lista_editar = st.selectbox("Selecciona qué lista quieres gestionar o revisar:", list(st.session_state["mis_listas"].keys()))
+        
+        # Mostramos los tickers actuales de esa lista
+        tickers_actuales = ", ".join(st.session_state["mis_listas"][lista_editar])
+        nuevos_tickers = st.text_area("Modificar valores incluidos (separados por comas):", tickers_actuales, key="edit_area")
+        
+        if st.button("💾 Guardar Cambios en esta Lista"):
+            # Limpiamos espacios en blanco al guardar
+            lista_limpia = [t.strip().upper() for t in nuevos_tickers.split(",") if t.strip()]
+            st.session_state["mis_listas"][lista_editar] = lista_limpia
+            st.success(f"¡Lista '{lista_editar}' actualizada con éxito!")
+            st.rerun()
+
+    with col_derecha:
+        st.write("### ➕ Crear una Lista de Seguimiento Nueva")
+        
+        # Inputs para dar de alta la lista nueva
+        nombre_nueva_lista = st.text_input("1. Nombre de la nueva lista (ej: Aeroespacial, Ciberseguridad):", "")
+        tickers_nuevos_lista = st.text_area("2. Introduce los Tickers separados por comas (ej: PLTR, CRWD, RKLB):", "")
+        
+        if st.button("🚀 Crear y Dar de Alta Nueva Lista"):
+            if nombre_nueva_lista.strip() == "":
+                st.error("Por favor, introduce un nombre válido para la lista.")
+            elif tickers_nuevos_lista.strip() == "":
+                st.error("Por favor, introduce al menos un Ticker.")
+            else:
+                # Procesamos y limpiamos el texto introducido
+                lista_tickers_procesada = [t.strip().upper() for t in tickers_nuevos_lista.split(",") if t.strip()]
+                
+                # Almacenamos la nueva lista en nuestro diccionario del sistema
+                st.session_state["mis_listas"][nombre_nueva_lista.strip()] = lista_tickers_procesada
+                st.success(f"¡Fabuloso! La lista **'{nombre_nueva_lista}'** con {len(lista_tickers_procesada)} valores se ha creado correctamente.")
+                st.rerun()
+                        
+                    
