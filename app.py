@@ -11,7 +11,7 @@ st.title("🎛️ Centro de Mando Financiero Pro")
 st.write(f"**Estado del Sistema:** Conectado en Vivo | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 st.write("---")
 
-# --- RECONSTRUCCIÓN COMPLETA DE LISTAS (SIN HEREDAR MEMORIA DAÑADA) ---
+# --- DICCIONARIO MAESTRO DE LISTAS (HARDCODED PARA EVITAR CORRUPCIÓN DE CACHÉ) ---
 mis_listas_limpias = {
     "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "TSM", "AVGO", "LRCX", "AMAT"],
     "Robótica": [
@@ -45,7 +45,7 @@ with pestaña1:
         {"Ticker": "MPWR", "Precio Compra": 1514.83, "Capital Invertido": 2000.0, "Broker": "ING España"}
     ]
     
-    @st.cache_data(ttl=30)
+    @st.cache_data(ttl=60)
     def cargar_posiciones_con_previsiones(lista):
         tabla_final = []
         for c in lista:
@@ -104,13 +104,12 @@ with pestaña2:
     st.subheader("🔍 Matriz de Inteligencia de Mercado (Flujos y Valoración)")
     
     st.write("### 📁 Cargar una Lista de Seguimiento Completa")
-    # Forzamos al sistema a leer el diccionario limpio y directo para desatascar las 9 posiciones
-    lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", list(mis_listas_limpias.keys()), key="selector_analisis_v3")
+    lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", list(mis_listas_limpias.keys()), key="selector_analisis_v4")
     
     if lista_sel:
         tickers_lista = mis_listas_limpias[lista_sel]
         
-        with st.spinner(f"Calculando métricas y dividendos auditados para {lista_sel}..."):
+        with st.spinner(f"Calculando métricas avanzadas y flujos para {lista_sel}..."):
             datos_lista = []
             for tick in tickers_lista:
                 try:
@@ -126,27 +125,31 @@ with pestaña2:
                     p_media = h['Close'].mean()
                     p_min = h['Low'].min()
                     
-                    # 🔥 CÁLCULO MATEMÁTICO REAL DE DIVIDENDOS (Evita errores de Yahoo de 127%)
-                    try:
-                        dividendos_historicos = t.dividends
-                        if not dividendos_historicos.empty:
-                            # Filtramos dividendos del último año
-                            h_div = dividendos_historicos.loc[dividendos_historicos.index >= (datetime.now().replace(year=datetime.now().year-1))]
-                            total_efectivo_año = h_div.sum()
-                            calc_yield = (total_efectivo_año / p_actual) * 100
-                            
-                            if calc_yield > 0.05 and calc_yield < 20.0:
-                                div_texto = f"{calc_yield:.2f}%"
-                            else:
-                                div_texto = "0.00% 🟢"
-                        else:
-                            div_texto = "0.00% 🟢"
-                    except:
-                        div_texto = "0.00% 🟢"
+                    # 🔥 AUDITORÍA ULTRA-PRECISA DE DIVIDENDOS
+                    # Buscamos el ratio cocinado oficial de rentabilidad por dividendo de Yahoo
+                    div_yield = info.get('trailingAnnualDividendYield', None)
+                    if div_yield is None:
+                        div_yield = info.get('dividendYield', 0.0)
+                    
+                    # Si el ratio devuelto es mayor de 0.5 (50%), es un error de formato de div por acción
+                    if div_yield and div_yield > 0.5:
+                        div_yield = div_yield / p_actual
+                        
+                    calc_yield_pct = div_yield * 100 if div_yield else 0.0
+                    
+                    # Doble verificación: si el porcentaje calculado es un disparate, lo forzamos a un cálculo de respaldo basado en el pago real
+                    if calc_yield_pct > 15.0:
+                        try:
+                            total_efectivo = t.dividends.tail(4).sum()
+                            calc_yield_pct = (total_efectivo / p_actual) * 100 if total_efectivo > 0 else 0.0
+                        except:
+                            calc_yield_pct = 0.0
+
+                    div_texto = f"{calc_yield_pct:.2f}%" if calc_yield_pct > 0.05 else "0.00% 🟢"
                     
                     # PREVISIÓN PRECIO OBJETIVO CONSENSO 12 MESES
                     target_precio = info.get('targetMedianPrice', None)
-                    if target_precio and target_precio > 0 and target_precio < (p_actual * 5):
+                    if target_precio and target_precio > 0 and target_precio < (p_actual * 4):
                         potencial = ((target_precio - p_actual) / p_actual) * 100
                         target_texto = f"{target_precio:.2f} ({potencial:+.1f}%)"
                     else:
@@ -181,7 +184,7 @@ with pestaña2:
                         "Ticker": tick, 
                         "Precio Actual": round(p_actual, 2), 
                         "Semáforo Técnico": sem_lista,
-                        "Dividendo Real Realizado": div_texto,
+                        "Dividendo Anual": div_texto,
                         "Objetivo 12M (Potencial)": target_texto,
                         "Ratio Riesgo/Beneficio": rb_texto,
                         "Volatilidad (Beta)": beta_texto
@@ -192,13 +195,13 @@ with pestaña2:
             if datos_lista:
                 df_mostrar = pd.DataFrame(datos_lista)
                 st.dataframe(df_mostrar, use_container_width=True)
-                st.caption("💡 *Nota Fiscal:* El porcentaje se calcula dividiendo la caja real repartida en el último año entre la cotización de hoy.")
+                st.caption("💡 *Nota Fiscal:* El porcentaje refleja la rentabilidad por dividendo anualizada real calculada sobre la cotización actual.")
             else:
-                st.warning("Conectando con el mercado...")
+                st.warning("Descargando datos actualizados del mercado...")
 
     st.write("---")
     st.write("### 🔍 Análisis Detallado Individual")
-    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos y Recomendación:", "COHR", key="input_individual_v3")
+    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos y Recomendación:", "COHR", key="input_individual_v4")
     
     if accion:
         accion = accion.upper().strip()
@@ -209,22 +212,12 @@ with pestaña2:
             if not datos_hist.empty:
                 st.write(f"**📉 Gráfico de Evolución del Precio (Últimos 30 días) - {accion}**")
                 st.line_chart(datos_hist['Close'])
-                
-                precio_hoy = datos_hist['Close'].iloc[-1]
-                media_movil = datos_hist['Close'].mean()
-                
-                if precio_hoy < (media_movil * 0.98):
-                    st.error(f"### 🔴 EVITAR / ESPERAR GIRO TÉCNICO\n\nEl precio cotiza por debajo de su media mensual ({media_movil:.2f}). Espera una señal de entrada institucional.")
-                elif precio_hoy > (media_movil * 1.02):
-                    st.success(f"### 🟢 COMPRAR (MOMENTUM ALCISTA ACTIVO)\n\nFuerza relativa impecable por encima de su media ({media_movil:.2f}). Flujo de capital alcista comprador.")
-                else:
-                    st.warning(f"### 🟡 MANTENER (CONSOLIDACIÓN LATERAL)\n\nZona de equilibrio plano sobre los {media_movil:.2f}. Mantener posiciones latentes.")
         except:
             st.error("Error al localizar el Ticker.")
 
 # =========================================================
-# PESTAÑA 3: CONFIGURACIÓN FANTASMA (PARA MANTENER ESTRUCTURA)
+# PESTAÑA 3: CONFIGURACIÓN
 # =========================================================
 with pestaña3:
     st.subheader("⚙️ Panel de Gestión de Listas Maestras")
-    st.info("Para este reinicio forzado del sistema, la lectura se realiza de forma directa desde el motor central del script para purgar errores de caché.")
+    st.info("Lectura directa activa desde el core del script para garantizar la estabilidad de los datos analizados.")
