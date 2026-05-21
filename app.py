@@ -11,7 +11,7 @@ st.title("🎛️ Centro de Mando Financiero Pro")
 st.write(f"**Estado del Sistema:** Conectado en Vivo | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 st.write("---")
 
-# --- DICCIONARIO MAESTRO DE LISTAS RECONSTRUIDO ---
+# --- DICCIONARIO MAESTRO COMPLETO (36 TICKERS AUDITADOS) ---
 mis_listas_limpias = {
     "Robótica": [
         "ISRG", "CGNX", "ADI", "AME", "ROCK", "ROK", "TER", "FTV", "NOW", "PTC", 
@@ -49,8 +49,6 @@ with pestaña1:
     def cargar_posiciones_con_previsiones(lista):
         tabla_final = []
         tickers_bot = [c["Ticker"] for c in lista]
-        
-        # Descarga masiva para el bot
         try:
             datos_bloque = yf.download(tickers_bot, period="30d", group_by='ticker', progress=False)
         except:
@@ -116,7 +114,7 @@ with pestaña2:
     st.subheader("🔍 Matriz de Inteligencia de Mercado (Flujos y Valoración)")
     
     st.write("### 📁 Cargar una Lista de Seguimiento Completa")
-    lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", list(mis_listas_limpias.keys()), key="selector_analisis_v5")
+    lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", list(mis_listas_limpias.keys()), key="selector_analisis_v6")
     
     if lista_sel:
         tickers_lista = mis_listas_limpias[lista_sel]
@@ -124,36 +122,40 @@ with pestaña2:
         with st.spinner(f"Descargando bloque de mercado masivo para {lista_sel}..."):
             datos_lista = []
             
-            # 🔥 PASO KEY: Descarga masiva paralela de precios de toda la lista en un solo viaje
+            # Descarga paralela rápida de precios históricos de mercado
             try:
                 mkt_data = yf.download(tickers_lista, period="30d", group_by='ticker', progress=False)
             except:
                 mkt_data = pd.DataFrame()
                 
             for tick in tickers_lista:
+                tick = tick.strip().upper()
                 try:
-                    tick = tick.strip().upper()
-                    
-                    # Extraer el historial precargado para evitar llamadas individuales lentas
+                    # 1. Resolver Precios (Con plan de contingencia si falla el bloque masivo)
                     if not mkt_data.empty and tick in mkt_data:
                         h = mkt_data[tick].dropna(subset=['Close'])
                     else:
-                        # Fallback seguro por si falla un ticker raro
                         t_individual = yf.Ticker(tick)
                         h = t_individual.history(period="30d")
                         
                     if h.empty:
+                        # Si no hay datos de precio históricos, no podemos calcular momentum técnico. Saltamos.
                         continue
                         
                     p_actual = h['Close'].iloc[-1]
                     p_media = h['Close'].mean()
                     p_min = h['Low'].min()
                     
-                    # Llamada a info optimizada (solo para fundamentales estáticos de soporte)
-                    t_fund = yf.Ticker(tick)
-                    info = t_fund.info
+                    # 2. Descarga Segura de Info Fundamental (Bucle ultra-protegido contra fallos parciales)
+                    try:
+                        t_fund = yf.Ticker(tick)
+                        info = t_fund.info
+                        if not info or not isinstance(info, dict):
+                            info = {}
+                    except:
+                        info = {}
                     
-                    # 🔥 FILTRO ESTABLE DE DIVIDENDOS (Evita tasas infladas del 127%)
+                    # 🔥 FILTRO ESTABLE DE DIVIDENDOS (A prueba de errores de div por acción)
                     div_yield = info.get('trailingAnnualDividendYield', None)
                     if div_yield is None:
                         div_yield = info.get('dividendYield', 0.0)
@@ -167,14 +169,14 @@ with pestaña2:
                         
                     div_texto = f"{calc_yield_pct:.2f}%" if calc_yield_pct > 0.05 else "0.00% 🟢"
                     
-                    # PRECIO OBJETIVO CONSENSO 12 MESES
+                    # PRECIO OBJETIVO CONSENSO 12 MESES (Con respaldo si Yahoo no lo ofrece para el ticker)
                     target_precio = info.get('targetMedianPrice', None)
                     if target_precio and target_precio > 0 and target_precio < (p_actual * 4):
                         potencial = ((target_precio - p_actual) / p_actual) * 100
                         target_texto = f"{target_precio:.2f} ({potencial:+.1f}%)"
                     else:
                         target_precio = p_actual * 1.12
-                        target_texto = f"{target_precio:.2f} (+12.0% Est.)"
+                        target_texto = f"{p_actual * 1.12:.2f} (+12.0% Est.)"
                     
                     # RATIO RIESGO / BENEFICIO TÁCTICO
                     riesgo_bajada = max(0.5, ((p_actual - p_min) / p_actual) * 100)
@@ -191,6 +193,7 @@ with pestaña2:
                     beta = info.get('beta', 1.0)
                     beta_texto = f"{beta:.2f}" if beta else "1.00"
 
+                    # CONFIGURACIÓN DEL SEMÁFORO TÉCNICO DE ENTRADA
                     if p_actual > (p_media * 1.02):
                         sem_lista = "🟢 COMPRAR"
                     elif p_actual < (p_media * 0.98):
@@ -198,6 +201,7 @@ with pestaña2:
                     else:
                         sem_lista = "🟡 MANTENER"
                         
+                    # Añadimos la fila independientemente de si los fundamentales fallaron o no
                     datos_lista.append({
                         "Ticker": tick, 
                         "Precio Actual": round(p_actual, 2), 
@@ -208,18 +212,26 @@ with pestaña2:
                         "Volatilidad (Beta)": beta_texto
                     })
                 except:
-                    pass
+                    # En caso de un fallo técnico catastrófico en un ticker, añadimos una fila mínima para mantener el recuento exacto
+                    try:
+                        datos_lista.append({
+                            "Ticker": tick, "Precio Actual": 0.0, "Semáforo Técnico": "❔ REVISAR",
+                            "Dividendo Anual": "0.00% 🟢", "Objetivo 12M (Potencial)": "No disp.",
+                            "Ratio Riesgo/Beneficio": "N/A", "Volatilidad (Beta)": "1.00"
+                        })
+                    except:
+                        pass
             
             if datos_lista:
                 df_mostrar = pd.DataFrame(datos_lista)
                 st.dataframe(df_mostrar, use_container_width=True)
-                st.caption("💡 *Nota:* Datos vectorizados de alta velocidad para carteras extensas.")
+                st.caption(f"📊 Control de volumen total: {len(df_mostrar)} activos proyectados en pantalla de forma síncrona.")
             else:
                 st.warning("Descargando datos...")
 
     st.write("---")
     st.write("### 🔍 Análisis Detallado Individual")
-    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos:", "COHR", key="input_individual_v5")
+    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos:", "COHR", key="input_individual_v6")
     if accion:
         try:
             datos_hist = yf.Ticker(accion.upper().strip()).history(period="30d")
@@ -233,4 +245,4 @@ with pestaña2:
 # =========================================================
 with pestaña3:
     st.subheader("⚙️ Panel de Gestión de Listas Maestras")
-    st.info("Lectura optimizada en alta velocidad.")
+    st.info("Estructura blindada contra pérdidas de tickers por timeout.")
