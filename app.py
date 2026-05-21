@@ -12,13 +12,21 @@ st.write(f"**Estado del Sistema:** Conectado en Vivo | {datetime.now().strftime(
 st.write("---")
 
 # --- INICIALIZACIÓN DEL DISCO DURO TEMPORAL (SESSION STATE) ---
-# Esto evita que las listas nuevas se borren al refrescar o cambiar de pestaña
 if "mis_listas" not in st.session_state:
     st.session_state["mis_listas"] = {
-        "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML"],
-        "Robótica": ["ADI", "AME", "ISRG", "CGNX"],
-        "Fotónica": ["IPGP", "LITE", "COHR"],
-        "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR"]
+        "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "TSM", "AVGO", "LRCX", "AMAT"],
+        "Robótica": [
+            # --- LÍDERES NORTEAMERICANOS (Disponibles en Revolut / ING) ---
+            "ISRG", "CGNX", "ADI", "AME", "ROCK", "ROK", "TER", "FTV", "NOW", "PTC", 
+            "ANSS", "GWW", "SYM", "PATH", "AZTA", "ESTC", "NXPI", "TXN", "ON", "A",
+            # --- GIGANTES EUROPEOS (Disponibles en ING / Revolut / Bolero) ---
+            "SIE.DE", "SU.PA", "ABB", "SCHN.PA", "KRN.DE", "ATOS.PA", "ASML", "ASM.AS",
+            # --- SECTOR JAPÓN Y ASIA (Formato ADR para operar fácil en América) ---
+            "6367.T", "6506.T", "6954.T", "KEYLY", "6981.T", "6861.T", "6758", "NIDYY", 
+            "OMRNY", "FANUY", "SNEJF", "TDKYY", "HITHY", "RCRUY", "OTGLY", "FOCLY", "FUJIY"
+        ],
+        "Fotónica": ["IPGP", "LITE", "COHR", "VNT", "FN", "MKSI", "NKTX", "LIMO"],
+        "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR", "CGNX", "ISRG", "COHR"]
     }
 
 # --- MENÚ DE PESTAÑAS PRINCIPALES ---
@@ -42,7 +50,7 @@ with pestaña1:
         {"Ticker": "MPWR", "Precio Compra": 1514.83, "Capital Invertido": 2000.0, "Broker": "ING España"}
     ]
     
-    @st.cache_data(ttl=10)
+    @st.cache_data(ttl=15)
     def cargar_posiciones_con_previsiones(lista):
         tabla_final = []
         for c in lista:
@@ -105,36 +113,42 @@ with pestaña2:
     st.subheader("🔍 Buscador de Acciones con Gráficos de Tendencia")
     
     st.write("### 📁 Cargar una Lista de Seguimiento Completa")
-    # Vinculamos el selector con las listas que están en el "disco duro" dinámico
     opciones_selector = ["Ninguna"] + list(st.session_state["mis_listas"].keys())
     lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", opciones_selector)
     
     if lista_sel != "Ninguna":
         tickers_lista = st.session_state["mis_listas"][lista_sel]
-        datos_lista = []
-        for tick in tickers_lista:
-            try:
-                t = yf.Ticker(tick)
-                h = t.history(period="30d")
-                if not h.empty:
-                    p_actual = h['Close'].iloc[-1]
-                    p_media = h['Close'].mean()
-                    
-                    if p_actual > (p_media * 1.02):
-                        sem_lista = "🟢 COMPRAR"
-                    elif p_actual < (p_media * 0.98):
-                        sem_lista = "🔴 EVITAR"
-                    else:
-                        sem_lista = "🟡 MANTENER"
+        
+        # Añadimos un mensaje de carga ya que 45 tickers tardan unos segundos en procesarse
+        with st.spinner(f"Analizando en vivo los componentes de la lista {lista_sel}..."):
+            datos_lista = []
+            for tick in tickers_lista:
+                try:
+                    t = yf.Ticker(tick)
+                    h = t.history(period="30d")
+                    if not h.empty:
+                        p_actual = h['Close'].iloc[-1]
+                        p_media = h['Close'].mean()
                         
-                    datos_lista.append({
-                        "Ticker": tick, 
-                        "Precio Actual": f"{p_actual:.2f}", 
-                        "Semáforo Combinado": sem_lista
-                    })
-            except:
-                pass
-        st.dataframe(pd.DataFrame(datos_lista), use_container_width=True)
+                        if p_actual > (p_media * 1.02):
+                            sem_lista = "🟢 COMPRAR"
+                        elif p_actual < (p_media * 0.98):
+                            sem_lista = "🔴 EVITAR"
+                        else:
+                            sem_lista = "🟡 MANTENER"
+                            
+                        datos_lista.append({
+                            "Ticker": tick, 
+                            "Precio Actual": f"{p_actual:.2f}", 
+                            "Semáforo Combinado": sem_lista
+                        })
+                except:
+                    pass
+            
+            if datos_lista:
+                st.dataframe(pd.DataFrame(datos_lista), use_container_width=True)
+            else:
+                st.warning("No se han podido descargar datos en este momento.")
 
     st.write("---")
     st.write("### 🔍 Análisis Detallado Individual")
@@ -195,20 +209,16 @@ with pestaña2:
 # =========================================================
 with pestaña3:
     st.subheader("⚙️ Gestión de Listas Pregrabadas")
-    
-    # DIVIDIMOS LA PANTALLA EN DOS: IZQUIERDA PARA EDITAR, DERECHA PARA CREAR NUEVAS
     col_izquierda, col_derecha = st.columns(2)
     
     with col_izquierda:
         st.write("### 📝 Editar o Consultar Listas Existentes")
         lista_editar = st.selectbox("Selecciona qué lista quieres gestionar o revisar:", list(st.session_state["mis_listas"].keys()))
         
-        # Mostramos los tickers actuales de esa lista
         tickers_actuales = ", ".join(st.session_state["mis_listas"][lista_editar])
         nuevos_tickers = st.text_area("Modificar valores incluidos (separados por comas):", tickers_actuales, key="edit_area")
         
         if st.button("💾 Guardar Cambios en esta Lista"):
-            # Limpiamos espacios en blanco al guardar
             lista_limpia = [t.strip().upper() for t in nuevos_tickers.split(",") if t.strip()]
             st.session_state["mis_listas"][lista_editar] = lista_limpia
             st.success(f"¡Lista '{lista_editar}' actualizada con éxito!")
@@ -216,8 +226,6 @@ with pestaña3:
 
     with col_derecha:
         st.write("### ➕ Crear una Lista de Seguimiento Nueva")
-        
-        # Inputs para dar de alta la lista nueva
         nombre_nueva_lista = st.text_input("1. Nombre de la nueva lista (ej: Aeroespacial, Ciberseguridad):", "")
         tickers_nuevos_lista = st.text_area("2. Introduce los Tickers separados por comas (ej: PLTR, CRWD, RKLB):", "")
         
@@ -227,12 +235,7 @@ with pestaña3:
             elif tickers_nuevos_lista.strip() == "":
                 st.error("Por favor, introduce al menos un Ticker.")
             else:
-                # Procesamos y limpiamos el texto introducido
                 lista_tickers_procesada = [t.strip().upper() for t in tickers_nuevos_lista.split(",") if t.strip()]
-                
-                # Almacenamos la nueva lista en nuestro diccionario del sistema
                 st.session_state["mis_listas"][nombre_nueva_lista.strip()] = lista_tickers_procesada
-                st.success(f"¡Fabuloso! La lista **'{nombre_nueva_lista}'** con {len(lista_tickers_procesada)} valores se ha creado correctamente.")
+                st.success(f"¡Fabuloso! La lista **'{nombre_nueva_lista}'** se ha creado correctamente.")
                 st.rerun()
-                        
-                    
