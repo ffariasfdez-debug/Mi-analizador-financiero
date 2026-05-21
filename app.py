@@ -11,13 +11,15 @@ st.title("🎛️ Centro de Mando Financiero Pro")
 st.write(f"**Estado del Sistema:** Conectado en Vivo | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 st.write("---")
 
-# --- DICCIONARIO MAESTRO COMPLETO (36 TICKERS AUDITADOS) ---
+# --- DICCIONARIO MAESTRO CON TICKERS INTERNACIONALES CORREGIDOS (.T para JAPÓN) ---
 mis_listas_limpias = {
     "Robótica": [
+        # --- Estados Unidos y Europa (25 posiciones) ---
         "ISRG", "CGNX", "ADI", "AME", "ROCK", "ROK", "TER", "FTV", "NOW", "PTC", 
         "ANSS", "GWW", "SYM", "PATH", "AZTA", "ESTC", "NXPI", "TXN", "ON", "A",
-        "SIE.DE", "SU.PA", "ABB", "SCHN.PA", "KRN.DE", "KEYLY", "NIDYY", 
-        "OMRNY", "FANUY", "SNEJF", "TDKYY", "HITHY", "RCRUY", "OTGLY", "FOCLY", "FUJIY"
+        "SIE.DE", "SU.PA", "ABB", "SCHN.PA", "KRN.DE",
+        # --- Japón: Cambiados a Ticker de Tokio (.T) para evitar bloqueo de ADRs (11 posiciones) ---
+        "6361.T", "6594.T", "6645.T", "6954.T", "6758.T", "6762.T", "6501.T", "7752.T", "4543.T", "7741.T", "4901.T"
     ],
     "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "TSM", "AVGO", "LRCX", "AMAT"],
     "Fotónica": ["IPGP", "LITE", "COHR", "VNT", "FN", "MKSI", "NKTX", "LIMO"],
@@ -114,15 +116,15 @@ with pestaña2:
     st.subheader("🔍 Matriz de Inteligencia de Mercado (Flujos y Valoración)")
     
     st.write("### 📁 Cargar una Lista de Seguimiento Completa")
-    lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", list(mis_listas_limpias.keys()), key="selector_analisis_v6")
+    lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", list(mis_listas_limpias.keys()), key="selector_analisis_v7")
     
     if lista_sel:
         tickers_lista = mis_listas_limpias[lista_sel]
         
-        with st.spinner(f"Descargando bloque de mercado masivo para {lista_sel}..."):
+        with st.spinner(f"Descargando bloque de mercado global para {lista_sel}..."):
             datos_lista = []
             
-            # Descarga paralela rápida de precios históricos de mercado
+            # Descarga paralela instantánea de precios
             try:
                 mkt_data = yf.download(tickers_lista, period="30d", group_by='ticker', progress=False)
             except:
@@ -131,7 +133,7 @@ with pestaña2:
             for tick in tickers_lista:
                 tick = tick.strip().upper()
                 try:
-                    # 1. Resolver Precios (Con plan de contingencia si falla el bloque masivo)
+                    # 1. Recuperar Historial de Precios
                     if not mkt_data.empty and tick in mkt_data:
                         h = mkt_data[tick].dropna(subset=['Close'])
                     else:
@@ -139,14 +141,19 @@ with pestaña2:
                         h = t_individual.history(period="30d")
                         
                     if h.empty:
-                        # Si no hay datos de precio históricos, no podemos calcular momentum técnico. Saltamos.
+                        # Si Yahoo no da precio, forzamos fila vacía para no perder el recuento
+                        datos_lista.append({
+                            "Ticker": tick, "Precio Actual": 0.0, "Semáforo Técnico": "❔ SIN DATOS",
+                            "Dividendo Anual": "0.00% 🟢", "Objetivo 12M (Potencial)": "No disp.",
+                            "Ratio Riesgo/Beneficio": "N/A", "Volatilidad (Beta)": "1.00"
+                        })
                         continue
                         
                     p_actual = h['Close'].iloc[-1]
                     p_media = h['Close'].mean()
                     p_min = h['Low'].min()
                     
-                    # 2. Descarga Segura de Info Fundamental (Bucle ultra-protegido contra fallos parciales)
+                    # 2. Descarga de Fundamentales
                     try:
                         t_fund = yf.Ticker(tick)
                         info = t_fund.info
@@ -155,7 +162,7 @@ with pestaña2:
                     except:
                         info = {}
                     
-                    # 🔥 FILTRO ESTABLE DE DIVIDENDOS (A prueba de errores de div por acción)
+                    # 🔥 CÁLCULO DE DIVIDENDO ESTABLECE (Evita desfases de moneda local)
                     div_yield = info.get('trailingAnnualDividendYield', None)
                     if div_yield is None:
                         div_yield = info.get('dividendYield', 0.0)
@@ -169,7 +176,7 @@ with pestaña2:
                         
                     div_texto = f"{calc_yield_pct:.2f}%" if calc_yield_pct > 0.05 else "0.00% 🟢"
                     
-                    # PRECIO OBJETIVO CONSENSO 12 MESES (Con respaldo si Yahoo no lo ofrece para el ticker)
+                    # PRECIO OBJETIVO DE ANALISTAS (Ajustado a moneda local del ticker)
                     target_precio = info.get('targetMedianPrice', None)
                     if target_precio and target_precio > 0 and target_precio < (p_actual * 4):
                         potencial = ((target_precio - p_actual) / p_actual) * 100
@@ -193,7 +200,6 @@ with pestaña2:
                     beta = info.get('beta', 1.0)
                     beta_texto = f"{beta:.2f}" if beta else "1.00"
 
-                    # CONFIGURACIÓN DEL SEMÁFORO TÉCNICO DE ENTRADA
                     if p_actual > (p_media * 1.02):
                         sem_lista = "🟢 COMPRAR"
                     elif p_actual < (p_media * 0.98):
@@ -201,7 +207,6 @@ with pestaña2:
                     else:
                         sem_lista = "🟡 MANTENER"
                         
-                    # Añadimos la fila independientemente de si los fundamentales fallaron o no
                     datos_lista.append({
                         "Ticker": tick, 
                         "Precio Actual": round(p_actual, 2), 
@@ -212,26 +217,22 @@ with pestaña2:
                         "Volatilidad (Beta)": beta_texto
                     })
                 except:
-                    # En caso de un fallo técnico catastrófico en un ticker, añadimos una fila mínima para mantener el recuento exacto
-                    try:
-                        datos_lista.append({
-                            "Ticker": tick, "Precio Actual": 0.0, "Semáforo Técnico": "❔ REVISAR",
-                            "Dividendo Anual": "0.00% 🟢", "Objetivo 12M (Potencial)": "No disp.",
-                            "Ratio Riesgo/Beneficio": "N/A", "Volatilidad (Beta)": "1.00"
-                        })
-                    except:
-                        pass
+                    datos_lista.append({
+                        "Ticker": tick, "Precio Actual": 0.0, "Semáforo Técnico": "❔ ERROR FILA",
+                        "Dividendo Anual": "0.00% 🟢", "Objetivo 12M (Potencial)": "No disp.",
+                        "Ratio Riesgo/Beneficio": "N/A", "Volatilidad (Beta)": "1.00"
+                    })
             
             if datos_lista:
                 df_mostrar = pd.DataFrame(datos_lista)
                 st.dataframe(df_mostrar, use_container_width=True)
-                st.caption(f"📊 Control de volumen total: {len(df_mostrar)} activos proyectados en pantalla de forma síncrona.")
+                st.caption(f"📊 Control de volumen total: {len(df_mostrar)} activos proyectados en pantalla.")
             else:
                 st.warning("Descargando datos...")
 
     st.write("---")
     st.write("### 🔍 Análisis Detallado Individual")
-    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos:", "COHR", key="input_individual_v6")
+    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos:", "COHR", key="input_individual_v7")
     if accion:
         try:
             datos_hist = yf.Ticker(accion.upper().strip()).history(period="30d")
@@ -245,4 +246,4 @@ with pestaña2:
 # =========================================================
 with pestaña3:
     st.subheader("⚙️ Panel de Gestión de Listas Maestras")
-    st.info("Estructura blindada contra pérdidas de tickers por timeout.")
+    st.info("Estructura internacional corregida usando tickers directos de la Bolsa de Tokio.")
