@@ -119,7 +119,6 @@ with pestaña2:
     if lista_sel != "Ninguna":
         tickers_lista = st.session_state["mis_listas"][lista_sel]
         
-        # Añadimos un mensaje de carga ya que 45 tickers tardan unos segundos en procesarse
         with st.spinner(f"Analizando en vivo los componentes de la lista {lista_sel}..."):
             datos_lista = []
             for tick in tickers_lista:
