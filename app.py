@@ -16,14 +16,13 @@ if "mis_listas" not in st.session_state:
     st.session_state["mis_listas"] = {
         "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "TSM", "AVGO", "LRCX", "AMAT"],
         "Robótica": [
-            # --- LÍDERES NORTEAMERICANOS (Disponibles en Revolut / ING) ---
+            # --- LÍDERES NORTEAMERICANOS ---
             "ISRG", "CGNX", "ADI", "AME", "ROCK", "ROK", "TER", "FTV", "NOW", "PTC", 
             "ANSS", "GWW", "SYM", "PATH", "AZTA", "ESTC", "NXPI", "TXN", "ON", "A",
-            # --- GIGANTES EUROPEOS (Disponibles en ING / Revolut / Bolero) ---
-            "SIE.DE", "SU.PA", "ABB", "SCHN.PA", "KRN.DE", "ATOS.PA", "ASML", "ASM.AS",
-            # --- SECTOR JAPÓN Y ASIA (Formato ADR para operar fácil en América) ---
-            "6367.T", "6506.T", "6954.T", "KEYLY", "6981.T", "6861.T", "6758", "NIDYY", 
-            "OMRNY", "FANUY", "SNEJF", "TDKYY", "HITHY", "RCRUY", "OTGLY", "FOCLY", "FUJIY"
+            # --- GIGANTES EUROPEOS ---
+            "SIE.DE", "SU.PA", "ABB", "SCHN.PA", "KRN.DE", "ASML", "ASM.AS",
+            # --- SECTOR JAPÓN Y ASIA (ADRs y Directos) ---
+            "KEYLY", "NIDYY", "OMRNY", "FANUY", "SNEJF", "TDKYY", "HITHY", "RCRUY", "OTGLY", "FOCLY", "FUJIY"
         ],
         "Fotónica": ["IPGP", "LITE", "COHR", "VNT", "FN", "MKSI", "NKTX", "LIMO"],
         "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR", "CGNX", "ISRG", "COHR"]
@@ -32,7 +31,7 @@ if "mis_listas" not in st.session_state:
 # --- MENÚ DE PESTAÑAS PRINCIPALES ---
 pestaña1, pestaña2, pestaña3 = st.tabs([
     "🤖 Bot Masivo Automático 30k", 
-    "🔍 Analizador Técnico Avanzado", 
+    "🔍 Analizador Técnico y Fundamental", 
     "⚙️ Configuración de Listas Pregrabadas"
 ])
 
@@ -107,10 +106,10 @@ with pestaña1:
     st.dataframe(df_bot, use_container_width=True)
 
 # =========================================================
-# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO
+# PESTAÑA 2: ANALIZADOR TÉCNICO Y FUNDAMENTAL AVANZADO
 # =========================================================
 with pestaña2:
-    st.subheader("🔍 Buscador de Acciones con Gráficos de Tendencia")
+    st.subheader("🔍 Matriz de Inteligencia de Mercado (Flujos y Valoración)")
     
     st.write("### 📁 Cargar una Lista de Seguimiento Completa")
     opciones_selector = ["Ninguna"] + list(st.session_state["mis_listas"].keys())
@@ -119,16 +118,49 @@ with pestaña2:
     if lista_sel != "Ninguna":
         tickers_lista = st.session_state["mis_listas"][lista_sel]
         
-        with st.spinner(f"Analizando en vivo los componentes de la lista {lista_sel}..."):
+        with st.spinner(f"Calculando métricas avanzadas, dividendos y ratios institucionales para {lista_sel}..."):
             datos_lista = []
             for tick in tickers_lista:
                 try:
                     t = yf.Ticker(tick)
                     h = t.history(period="30d")
+                    info = t.info
+                    
                     if not h.empty:
                         p_actual = h['Close'].iloc[-1]
                         p_media = h['Close'].mean()
+                        p_min = h['Low'].min()
                         
+                        # 1. Extracción de dividendos (Por seguridad fiscal)
+                        div_yield = info.get('dividendYield', 0.0)
+                        div_texto = f"{div_yield * 100:.2f}%" if div_yield else "0.00% 🟢"
+                        
+                        # 2. Previsión Consenso 12 Meses (Evolución estimada de precio)
+                        target_precio = info.get('targetMedianPrice', None)
+                        if target_precio:
+                            potencial = ((target_precio - p_actual) / p_actual) * 100
+                            target_texto = f"{target_precio:.2f} ({potencial:+.1f}%)"
+                        else:
+                            target_precio = p_actual * 1.10  # Estimación genérica si falta dato
+                            target_texto = "No disp. (~+10%)"
+                        
+                        # 3. Cálculo Matemático de Riesgo / Beneficio
+                        riesgo_bajada = max(0.5, ((p_actual - p_min) / p_actual) * 100)
+                        beneficio_subida = max(0.5, ((target_precio - p_actual) / p_actual) * 100)
+                        ratio_rb = beneficio_subida / riesgo_bajada
+                        
+                        if ratio_rb >= 2.0:
+                            rb_texto = f"{ratio_rb:.1f}x 🔥 Excelente"
+                        elif ratio_rb >= 1.0:
+                            rb_texto = f"{ratio_rb:.1f}x 📊 Favorable"
+                        else:
+                            rb_texto = f"{ratio_rb:.1f}x ⚠️ Riesgo Alto"
+                            
+                        # 4. Volatilidad (Beta)
+                        beta = info.get('beta', 1.0)
+                        beta_texto = f"{beta:.2f}" if beta else "1.00"
+
+                        # 5. Semáforo Combinado de Flujo Técnico
                         if p_actual > (p_media * 1.02):
                             sem_lista = "🟢 COMPRAR"
                         elif p_actual < (p_media * 0.98):
@@ -138,20 +170,26 @@ with pestaña2:
                             
                         datos_lista.append({
                             "Ticker": tick, 
-                            "Precio Actual": f"{p_actual:.2f}", 
-                            "Semáforo Combinado": sem_lista
+                            "Precio Actual": round(p_actual, 2), 
+                            "Semáforo Técnico": sem_lista,
+                            "Dividendo Anual": div_texto,
+                            "Objetivo 12M (Potencial)": target_texto,
+                            "Ratio Riesgo/Beneficio": rb_texto,
+                            "Volatilidad (Beta)": beta_texto
                         })
                 except:
                     pass
             
             if datos_lista:
-                st.dataframe(pd.DataFrame(datos_lista), use_container_width=True)
+                df_mostrar = pd.DataFrame(datos_lista)
+                st.dataframe(df_mostrar, use_container_width=True)
+                st.caption("💡 *Nota Fiscal:* Los valores marcados con '0.00% 🟢' son óptimos para carteras radicadas en España sin impacto impositivo por reparto.")
             else:
                 st.warning("No se han podido descargar datos en este momento.")
 
     st.write("---")
     st.write("### 🔍 Análisis Detallado Individual")
-    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos y Recomendación (ej: LITE, TSM, AMD):", "TSM")
+    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos y Recomendación:", "TSM")
     
     if accion:
         accion = accion.upper()
