@@ -222,4 +222,119 @@ with pestaña2:
                         "Ticker": tick, 
                         "Precio Actual": 0.0, 
                         "Semáforo Técnico": "❔ ERROR FILA",
-                        "Divid
+                        "Dividendo Anual": "0.00% 🟢", 
+                        "Objetivo 12M (Potencial)": "No disp.",
+                        "Ratio Riesgo/Beneficio": "N/A", 
+                        "Volatilidad (Beta)": "1.00"
+                    })
+            
+            if datos_lista:
+                df_mostrar = pd.DataFrame(datos_lista)
+                st.dataframe(df_mostrar, use_container_width=True)
+                st.caption(f"📊 Control de volumen total: {len(df_mostrar)} activos proyectados de forma síncrona.")
+            else:
+                st.warning("Descargando datos...")
+
+    # --- ANÁLISIS DETALLADO INDIVIDUAL INTELIGENTE ---
+    st.write("---")
+    st.write("### 🔍 Análisis Detallado Individual")
+    accion = st.text_input("Introduce el Ticker de la acción para generar Análisis y Gráfico:", "COHR", key="input_individual_v8")
+    
+    if accion:
+        try:
+            ticker_limpio = accion.upper().strip()
+            datos_hist = yf.Ticker(ticker_limpio).history(period="30d")
+            
+            if not datos_hist.empty:
+                p_actual = datos_hist['Close'].iloc[-1]
+                p_media = datos_hist['Close'].mean()
+                p_min = datos_hist['Low'].min()
+                
+                try:
+                    t_fund = yf.Ticker(ticker_limpio)
+                    info = t_fund.info
+                    if not info or not isinstance(info, dict):
+                        info = {}
+                except:
+                    info = {}
+                
+                # Desglose de Dividendos idéntico al cuadro general
+                div_yield = info.get('trailingAnnualDividendYield', None)
+                if div_yield is None:
+                    div_yield = info.get('dividendYield', 0.0)
+                if div_yield and div_yield > 0.5:
+                    div_yield = div_yield / p_actual
+                calc_yield_pct = div_yield * 100 if div_yield else 0.0
+                if calc_yield_pct > 15.0: 
+                    calc_yield_pct = 0.0
+                div_texto = f"{calc_yield_pct:.2f}%" if calc_yield_pct > 0.05 else "0.00% 🟢"
+                
+                # Precio Objetivo Consenso
+                target_precio = info.get('targetMedianPrice', None)
+                if target_precio and target_precio > 0 and target_precio < (p_actual * 4):
+                    potencial = ((target_precio - p_actual) / p_actual) * 100
+                    target_texto = f"{target_precio:.2f} ({potencial:+.1f}%)"
+                else:
+                    target_precio = p_actual * 1.12
+                    target_texto = f"{p_actual * 1.12:.2f} (+12.0% Est.)"
+                
+                # Ratio Riesgo/Beneficio Táctico
+                riesgo_bajada = max(0.5, ((p_actual - p_min) / p_actual) * 100)
+                beneficio_subida = max(0.5, ((target_precio - p_actual) / p_actual) * 100)
+                ratio_rb = beneficio_subida / riesgo_bajada
+                if ratio_rb >= 1.8:
+                    rb_texto = f"{ratio_rb:.1f}x 🔥 Excelente"
+                elif ratio_rb >= 1.0:
+                    rb_texto = f"{ratio_rb:.1f}x 📊 Favorable"
+                else:
+                    rb_texto = f"{ratio_rb:.1f}x ⚠️ Riesgo Alto"
+                
+                beta = info.get('beta', 1.0)
+                beta_texto = f"{beta:.2f}" if beta else "1.00"
+                
+                # Generación de Semáforos e Informes Tácticos
+                if p_actual > (p_media * 1.02):
+                    sem_lista = "🟢 COMPRAR"
+                    color_explicacion = "green"
+                    porquetexto = f"El precio actual ({p_actual:.2f}) cotiza por encima de su media móvil de 30 días ({p_media:.2f}), validando un momentum alcista sólido en el corto plazo. El ratio Riesgo/Beneficio es {rb_texto} con un objetivo en {target_texto}."
+                    actuarpensar = "MOMENTUM ACTIVO. Estrategia recomendada: Mantener o añadir posiciones aprovechando pequeños recortes diarios sin perseguir el valor en máximos verticales."
+                elif p_actual < (p_media * 0.98):
+                    sem_lista = "🔴 EVITAR"
+                    color_explicacion = "red"
+                    porquetexto = f"El precio actual ({p_actual:.2f}) ha roto a la baja la media móvil de 30 días ({p_media:.2f}), confirmando una corrección técnica activa o presión vendedora en el corto plazo."
+                    actuarpensar = "PRUDENCIA EN ESPERA. Estrategia recomendada: No intentar adivinar el suelo. Dejar que el precio detenga las caídas, busque soporte firme y pinte una pauta de giro antes de comprar."
+                else:
+                    sem_lista = "🟡 MANTENER"
+                    color_explicacion = "orange"
+                    porquetexto = f"El activo oscila muy cerca de su media móvil de 30 días ({p_media:.2f}) en un canal puramente lateral, sin romper resistencias ni apoyarse en soportes definitivos."
+                    actuarpensar = "CONSOLIDACIÓN ACTIVA. Estrategia recomendada: Conservar las acciones en cartera sin alterar el peso de la posición. Monitorear si el semáforo rompe hacia verde."
+
+                # Despliegue de los mismos bloques de datos en columnas visuales
+                st.write(f"#### 📊 Ficha de Inteligencia Individual: {ticker_limpio}")
+                col1, col2, col3, col4, col5 = st.columns(5)
+                col1.metric("Precio Actual", f"{p_actual:.2f}")
+                col2.metric("Semáforo Técnico", sem_lista)
+                col3.metric("Dividendo", div_texto)
+                col4.metric("Objetivo 12M (Potencial)", target_texto)
+                col5.metric("Ratio R/B", rb_texto.split()[0])
+                
+                # Cuadro de dictamen táctico automático
+                with st.expander(f"👁️ Ver Dictamen Completo del Radar para {ticker_limpio}", expanded=True):
+                    st.markdown(f"**¿POR QUÉ?:** {porquetexto}")
+                    st.markdown(f"**CÓMO ACTUAR:** :{color_explicacion}[{actuarpensar}]")
+                
+                # Gráfico limpio de líneas sin forzar el origen en cero
+                df_grafico = datos_hist[['Close']].copy()
+                df_grafico.index = df_grafico.index.date
+                st.line_chart(df_grafico, use_container_width=True)
+        except:
+            st.error("Error al localizar el Ticker o procesar los datos analíticos individuales.")
+
+# =========================================================
+# PESTAÑA 3: CONFIGURACIÓN
+# =========================================================
+with pestaña3:
+    st.subheader("⚙️ Panel de Gestión de Listas Maestras")
+    st.info("Estructura ampliada a 40 activos institucionales.")
+    st.write("Visualización estática de los diccionarios limpios del sistema:")
+    st.json(mis_listas_limpias)
