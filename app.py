@@ -1,7 +1,48 @@
-if not hist.empty:
+import streamlit as st
+import pandas as pd
+import yfinance as yf
+from datetime import datetime
+
+# 1. Configuración obligatoria de la página (Siempre al principio)
+st.set_page_config(page_title="Centro de Mando Financiero", layout="wide")
+
+# 2. Título Principal
+st.title("📊 Centro de Mando Financiero Pro")
+st.write(f"**Estado del Sistema:** Conectado en Vivo | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+st.write("---")
+
+# 3. Tu Diccionario Maestro de Activos
+mis_listas_limpias = {
+    "Robótica": [
+        "ISRG", "CGNX", "ADI", "AME", "ROCK", "ROK", "TER", "FTV", "NOW", "PTC",
+        "ANSS", "GWW", "SYM", "PATH", "AZTA", "ESTC", "NXPI", "TXN", "ON", "A",
+        "SIE.DE", "SU.PA", "ABB", "SCHN.PA", "KRN.DE", "TRMB", "AZO", "GFL"
+    ]
+}
+
+# 4. Datos de tus posiciones para el Proyecto (Precios medios y cantidades)
+datos_compra = {
+    "NOW": {"precio_medio": 85.0, "cantidad": 10},
+    # Aquí puedes ir añadiendo tus otros activos comprados siguiendo el mismo formato
+}
+
+# 5. Sección de Análisis Individual
+st.header("🔍 Análisis Detallado Individual")
+st.write("Introduce el Ticker de la acción para generar Gráficos y Diagnósticos:")
+
+# Cuadro de texto fijo para buscar el activo
+ticker_input = st.text_input("Ticker del Activo:", value="NOW").upper().strip()
+
+if ticker_input:
+    try:
+        # Descarga de datos históricos de mercado (Último mes)
+        datos_ticker = yf.Ticker(ticker_input)
+        hist = datos_ticker.history(period="1mo")
+        
+        if not hist.empty:
             precio_actual = float(hist['Close'].iloc[-1])
             
-            # Si el activo está registrado en tu proyecto, calcula métricas, semáforo y consejo
+            # Si el activo está en tu cartera, calcula semáforo, consejo y KPIs
             if ticker_input in datos_compra:
                 precio_compra = datos_compra[ticker_input]["precio_medio"]
                 cantidad_acciones = datos_compra[ticker_input]["cantidad"]
@@ -9,7 +50,7 @@ if not hist.empty:
                 rendimiento_porcentaje = ((precio_actual - precio_compra) / precio_compra) * 100
                 rendimiento_absoluto = (precio_actual - precio_compra) * cantidad_acciones
                 
-                # Definición lógica del Semáforo y el Consejo Dinámico
+                # Lógica del Semáforo y el Consejo Dinámico
                 if rendimiento_porcentaje > 2.0:
                     semaforo_color, semaforo_texto = "🟢", "ÓPTIMO / GANANCIAS"
                     consejo_texto = f"El activo responde positivamente situándose un **{rendimiento_porcentaje:.2f}%** por encima de tu precio de entrada. Mantener para el objetivo del proyecto a largo plazo."
@@ -20,12 +61,12 @@ if not hist.empty:
                     semaforo_color, semaforo_texto = "🔴", "ALERTA / PÉRDIDAS"
                     consejo_texto = f"Posición en pérdidas temporales (**{rendimiento_porcentaje:.2f}%**). Evaluar soportes clave por si el plan a largo plazo aconseja acumulación."
                 
-                # 1. INDICADORES VISUALES
+                # Renderizado de Tarjetas de Estado
                 st.markdown(f"### {semaforo_color} Estado: {semaforo_texto}")
                 st.info(f"💡 **Consejo Dinámico:** {consejo_texto}")
                 st.write("---")
                 
-                # 2. MÉTRICAS NUMÉRICAS (KPIs)
+                # Renderizado de Métricas Numéricas (KPIs)
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
                     st.metric("Participaciones", f"{cantidad_acciones} ud")
@@ -40,7 +81,13 @@ if not hist.empty:
             
             st.write("---")
             
-            # 3. EL GRÁFICO DE COTIZACIÓN REAL (Con escala perfecta y limpia)
+            # El Gráfico de Cotización con escala real e intacta
             st.write(f"**Evolución del precio de {ticker_input} (Último mes):**")
             grafico_limpio = pd.DataFrame(hist['Close'])
             st.line_chart(grafico_limpio)
+            
+        else:
+            st.error(f"No se han encontrado datos en Yahoo Finance para el ticker: {ticker_input}")
+            
+    except Exception as e:
+        st.error(f"Error al procesar el activo: {e}")
