@@ -33,11 +33,11 @@ listas_guardadas = {
 }
 
 # =========================================================
-# PESTAÑA 1: BOT MASIVO AUTOMÁTICO 30K (EMBUSH INTELLIGENT REGULADO)
+# PESTAÑA 1: BOT MASIVO AUTOMÁTICO 30K (FILTRO DEL 20%)
 # =========================================================
 with pestaña1:
     st.subheader("🤖 Algoritmo de Selección Inteligente y Maduración Trimestral")
-    st.write("El bot filtra la lista de **Robótica** exigiendo crecimiento del **25%**, momentum técnico, y aplica un candado de **3 meses**.")
+    st.write("El bot filtra la lista de **Robótica** exigiendo crecimiento del **20%**, momentum técnico, y aplica un candado de **3 meses**.")
 
     # --- CONTROLES DE GESTIÓN DE RIESGO ---
     st.write("#### 🛡️ Reglas de Gestión Monetaria")
@@ -49,7 +49,7 @@ with pestaña1:
 
     if st.button("🔄 Ejecutar Embudo Inteligente y Escanear Mercado"):
         st.cache_data.clear()
-        st.toast("El bot está aplicando el triple filtro cuantitativo...")
+        st.toast("El bot está aplicando el triple filtro cuantitativo (Crecimiento > 20%)...")
 
     @st.cache_data(ttl=60)
     def motor_bot_inteligente(lista_tickers, inversion_bloque, limite_semana):
@@ -66,21 +66,21 @@ with pestaña1:
                     precio_actual = historial['Close'].iloc[-1]
                     media_30 = historial['Close'].mean()
                     
-                    # 1. FILTRO TÉCNICO COMPLETO: Confirmar salud de tendencia (Precio >= Media)
+                    # 1. FILTRO TÉCNICO: Confirmar tendencia (Precio >= 99% de la media de 30 días)
                     if precio_actual >= (media_30 * 0.99):
                         
-                        # 2. FILTRO FUNDAMENTAL ROBUSTO (Crecimiento >= 25%)
+                        # 2. FILTRO FUNDAMENTAL AJUSTADO (Crecimiento >= 20%)
                         info = t.info
-                        # Buscamos en cascada diferentes métricas de crecimiento que ofrece la API
                         crecimiento_estimado = info.get('earningsGrowth', info.get('revenueGrowth', info.get('earningsQuarterlyGrowth', None)))
                         
                         if crecimiento_estimado is not None and crecimiento_estimado != 0:
                             crecimiento_porcentaje = crecimiento_estimado * 100
                         else:
-                            # Tasa base por defecto para activos tecnológicos premium que no publican forward growth en Yahoo
-                            crecimiento_porcentaje = 25.5 
+                            # Asignación por defecto a tecnológicas premium que no tengan el forward growth expuesto en la API
+                            crecimiento_porcentaje = 21.0 
 
-                        if crecimiento_porcentaje >= 25.0:
+                        # Aplicamos el nuevo suelo del 20%
+                        if crecimiento_porcentaje >= 20.0:
                             # 3. EVALUACIÓN DE POTENCIAL A 4 AÑOS
                             target_median = info.get('targetMedianPrice', info.get('targetMeanPrice', precio_actual * 1.25))
                             potencial_4a = ((target_median - precio_actual) / precio_actual) * 100
@@ -100,7 +100,7 @@ with pestaña1:
         
         if candidatas_finalistas:
             df_ordenado = pd.DataFrame(candidatas_finalistas)
-            # ORDENACIÓN CRÍTICA: Priorizar las de mayor potencial a largo plazo primero
+            # Ordenamos poniendo arriba las de mayor potencial a largo plazo
             df_ordenado = df_ordenado.sort_values(by="Potencial 4A Real", ascending=False)
             
             for _, fila in df_ordenado.iterrows():
@@ -150,7 +150,7 @@ with pestaña1:
         st.dataframe(df_cartera_inteligente, use_container_width=True)
         st.success("💡 Todas las posiciones de la tabla superior están bajo la regla estricta de 3 meses mínimos de maduración en cartera.")
     else:
-        st.info("Ningún activo de la lista cumple el filtro simultáneo de >25% de crecimiento y fuerza alcista en este instante.")
+        st.info("Ningún activo de la lista cumple el filtro simultáneo de >20% de crecimiento y fuerza alcista en este instante.")
 
 # =========================================================
 # PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO
