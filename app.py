@@ -18,9 +18,10 @@ pestaña1, pestaña2, pestaña3 = st.tabs([
     "⚙️ Configuración de Listas Pregrabadas"
 ])
 
+# Tus listas maestras intactas
 listas_guardadas = {
     "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML"],
-    "Robótica": ["ADI", "AME", "ISRG", "CGNX"],
+    "Robótica": ["ADI", "AME", "ISRG", "CGNX", "ROCK", "ROK", "TER", "FTV", "NOW", "PTC", "ANSS", "GWW", "6954.T", "6758.T", "6501.T", "COHR"],
     "Fotónica": ["IPGP", "LITE", "COHR"],
     "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR"]
 }
@@ -56,7 +57,6 @@ with pestaña1:
             rendimiento = round(((precio_actual - c["Precio Compra"]) / c["Precio Compra"]) * 100, 2)
             flecha = "🔼 +" if rendimiento >= 0 else "🔽 "
             
-            # Cálculo del semáforo dinámico real basado en tendencia de mercado
             if precio_actual > (media_tendencia * 1.02):
                 semaforo_tabla = "🟢 COMPRAR / AÑADIR"
                 prev_medio = "📈 Tendencia Alcista Fuerte"
@@ -97,7 +97,7 @@ with pestaña1:
     st.dataframe(df_bot, use_container_width=True)
 
 # =========================================================
-# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO (CON SEMÁFOROS REALES)
+# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO (LÓGICA CRITERIO 4 AÑOS)
 # =========================================================
 with pestaña2:
     st.subheader("🔍 Buscador de Acciones con Gráficos de Tendencia")
@@ -112,77 +112,94 @@ with pestaña2:
             try:
                 t = yf.Ticker(tick)
                 h = t.history(period="30d")
+                info = t.info
                 if not h.empty:
                     p_actual = h['Close'].iloc[-1]
                     p_media = h['Close'].mean()
                     
-                    if p_actual > (p_media * 1.02):
-                        sem_lista = "🟢 COMPRAR"
-                    elif p_actual < (p_media * 0.98):
-                        sem_lista = "🔴 EVITAR"
+                    # Consensuar Precio Objetivo estimado a largo plazo
+                    target_val = info.get('targetMedianPrice', p_actual * 1.15)
+                    potencial_val = ((target_val - p_actual) / p_actual) * 100
+                    
+                    # Filtro inteligente combinado (Evitamos comprar si el potencial es ridículo)
+                    if p_actual > p_media and potencial_val >= 15.0:
+                        sem_lista = "🟢 COMPRAR (Valor + Inercia)"
+                    elif potencial_val >= 20.0:
+                        sem_lista = "🟡 ACUMULAR (Zona Barata)"
                     else:
-                        sem_lista = "🟡 MANTENER"
+                        sem_lista = "🔴 ESPERAR (Poco Margen)"
                         
                     datos_lista.append({
                         "Ticker": tick, 
                         "Precio Actual": f"{p_actual:.2f}", 
-                        "Semáforo Combinado": sem_lista
+                        "Precio Objetivo": f"{target_val:.2f}",
+                        "Potencial 4A": f"{potencial_val:.1f}%",
+                        "Estrategia Valor": sem_lista
                     })
             except:
                 pass
         st.dataframe(pd.DataFrame(datos_lista), use_container_width=True)
 
     st.write("---")
-    st.write("### 🔍 Análisis Detallado Individual")
-    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos y Recomendación (ej: LITE, TSM, AMD):", "TSM")
+    st.write("### 🔍 Ficha de Inteligencia Detallada")
+    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos y Recomendación (ej: COHR, TSM, AMD):", "COHR")
     
     if accion:
         accion = accion.upper()
         try:
             ticker_obj = yf.Ticker(accion)
             datos_hist = ticker_obj.history(period="30d")
+            info_ind = ticker_obj.info
             
             if not datos_hist.empty:
-                st.write(f"**📉 Gráfico de Evolución del Precio (Últimos 30 días) - {accion}**")
-                st.line_chart(datos_hist['Close'])
-                
                 precio_hoy = datos_hist['Close'].iloc[-1]
                 precio_max = datos_hist['High'].max()
                 precio_min = datos_hist['Low'].min()
                 media_movil = datos_hist['Close'].mean()
                 
-                # CÁLCULO DE LA CONDICIÓN TÉCNICA DEL SEMÁFORO INDIVIDUAL CONTRA LA TENDENCIA
-                if precio_hoy < (media_movil * 0.98):
-                    estado_semaforo = "🔴 EVITAR / ESPERAR GIRO TÉCNICO"
-                    tipo_alerta = "rojo"
-                    consejo_texto = f"El valor está en fase de corrección por debajo de su tendencia media de {media_movil:.2f}. El precio se acerca al suelo mensual de {precio_min:.2f}. No compres hasta que veamos un giro al alza confirmado."
-                elif precio_hoy > (media_movil * 1.02):
-                    estado_semaforo = "🟢 COMPRAR (MOMENTUM ALCISTA ACTIVO)"
-                    tipo_alerta = "verde"
-                    consejo_texto = f"Fuerza relativa alcista impecable. Cotizando sólidamente por encima de su media de {media_movil:.2f}. El capital institucional empuja activamente la cotización; apto para abrir o incrementar posiciones."
-                else:
-                    estado_semaforo = "🟡 MANTENER (CONSOLIDACIÓN LATERAL)"
-                    tipo_alerta = "amarillo"
-                    consejo_texto = f"El precio está oscilando plano alrededor de su media de {media_movil:.2f}. Zona neutral. Apto para mantener la posición si estás dentro, pero espera una ruptura para comprar más."
-
-                # PINTAR EN PANTALLA EN DOS COLUMNAS COMO EN TU CAPTURA
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    st.info(f"""
-                    **📊 Métricas Recientes de {accion}:**
-                    * **Precio Actual:** {precio_hoy:.2f}
-                    * **Máximo del Mes:** {precio_max:.2f}
-                    * **Mínimo del Mes (Soporte):** {precio_min:.2f}
-                    """)
+                target_ind = info_ind.get('targetMedianPrice', precio_hoy * 1.15)
+                potencial_ind = ((target_ind - precio_hoy) / precio_hoy) * 100
                 
-                with col_b:
-                    st.write("**🚦 Semáforo de Operación:**")
+                # --- NUEVA LÓGICA DE FILTRADO SIN CONTRADICCIONES ---
+                if potencial_ind >= 20.0:
+                    estado_semaforo = "🟢 COMPRAR (POTENCIAL COMPLETO ACTIVO)"
+                    tipo_alerta = "verde"
+                    consejo_texto = f"El activo cotiza en zona de clara ventaja. Con un precio objetivo de {target_ind:.2f}, presenta un potencial de revalorización del {potencial_ind:.1f}%. El margen de seguridad es óptimo para la acumulación a largo plazo."
+                elif 10.0 <= potencial_ind < 20.0:
+                    estado_semaforo = "🟡 MANTENER / ESPERAR RECORTE"
+                    tipo_alerta = "amarillo"
+                    consejo_texto = f"Zona neutral. Aunque la inercia puede acompañar, el margen actual hasta su objetivo ({target_ind:.2f}) es de un {potencial_ind:.1f}%. Se aconseja esperar recortes hacia los niveles de soporte ({precio_min:.2f}) antes de añadir capital."
+                else:
+                    estado_semaforo = "🔴 EVITAR / EXCESO DE VALORACIÓN"
+                    tipo_alerta = "rojo"
+                    consejo_texto = f"Margen de beneficio insuficiente. El potencial estimado es de tan solo un {potencial_ind:.1f}% frente a su valor estimado ({target_ind:.2f}). Comprar aquí implica asumir un riesgo alto para un retorno muy bajo."
+
+                # --- NUEVA DISTRIBUCIÓN DE MÉTRICAS CLARAS EN FILA SUPERIOR ---
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Precio Actual", f"${precio_hoy:.2f}")
+                m2.metric("Objetivo Estimado", f"${target_val:.2f}")
+                m3.metric("Potencial Compuesto", f"{potencial_ind:.1f}%")
+                
+                with m4:
+                    st.write("**Veredicto de Filtro:**")
                     if tipo_alerta == "verde":
-                        st.success(f"### {estado_semaforo}\n\n**Estrategia Recomendada:** {consejo_texto}")
+                        st.success("🟢 EXCELENTE")
                     elif tipo_alerta == "amarillo":
-                        st.warning(f"### {estado_semaforo}\n\n**Estrategia Recomendada:** {consejo_texto}")
+                        st.warning("🟡 VIGILANCIA")
                     else:
-                        st.error(f"### {estado_semaforo}\n\n**Estrategia Recomendada:** {consejo_texto}")
+                        st.error("🔴 DESCARTAR")
+
+                # Dictamen descriptivo justo debajo de los números
+                if tipo_alerta == "verde":
+                    st.success(f"**Estrategia:** {consejo_texto}")
+                elif tipo_alerta == "amarillo":
+                    st.warning(f"**Estrategia:** {consejo_texto}")
+                else:
+                    st.error(f"**Estrategia:** {consejo_texto}")
+
+                st.write(f"**📉 Gráfico de Evolución Dinámica - {accion}**")
+                st.line_chart(datos_hist['Close'])
+                
             else:
                 st.error("No se han localizado datos para este Ticker.")
         except:
