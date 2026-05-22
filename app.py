@@ -180,4 +180,134 @@ with pestaña2:
                     
                     # PRECIO OBJETIVO CONSENSO 12 MESES
                     target_precio = info.get('targetMedianPrice', None)
-                    if
+                    if target_precio and target_precio > 0 and target_precio < (p_actual * 4):
+                        potencial = ((target_precio - p_actual) / p_actual) * 100
+                        target_texto = f"{target_precio:.2f} ({potencial:+.1f}%)"
+                    else:
+                        target_precio = p_actual * 1.12
+                        target_texto = f"{p_actual * 1.12:.2f} (+12.0% Est.)"
+                    
+                    # RATIO RIESGO / BENEFICIO TÁCTICO
+                    riesgo_bajada = max(0.5, ((p_actual - p_min) / p_actual) * 100)
+                    beneficio_subida = max(0.5, ((target_precio - p_actual) / p_actual) * 100)
+                    ratio_rb = beneficio_subida / riesgo_bajada
+                    
+                    if ratio_rb >= 1.8:
+                        rb_texto = f"{ratio_rb:.1f}x 🔥 Excelente"
+                    elif ratio_rb >= 1.0:
+                        rb_texto = f"{ratio_rb:.1f}x 📊 Favorable"
+                    else:
+                        rb_texto = f"{ratio_rb:.1f}x ⚠️ Riesgo Alto"
+                        
+                    beta = info.get('beta', 1.0)
+                    beta_texto = f"{beta:.2f}" if beta else "1.00"
+
+                    # CONFIGURACIÓN DEL MOMENTUM TÉCNICO DE CORTO PLAZO
+                    if p_actual >= (p_media * 1.01):
+                        sem_lista = "🟢 COMPRAR"
+                    elif p_actual <= (p_media * 0.99):
+                        sem_lista = "🔴 EVITAR"
+                    else:
+                        sem_lista = "🟡 MANTENER"
+                        
+                    datos_lista.append({
+                        "Ticker": tick, 
+                        "Precio Actual": round(p_actual, 2), 
+                        "Semáforo Técnico": sem_lista,
+                        "Filtro Fiscal (Destino Seguro)": filtro_fiscal,
+                        "Dividendo": div_texto,
+                        "Objetivo 12M (Potencial)": target_texto,
+                        "Ratio Riesgo/Beneficio": rb_texto,
+                        "Volatilidad (Beta)": beta_texto
+                    })
+                except:
+                    datos_lista.append({
+                        "Ticker": tick, "Precio Actual": 0.0, "Semáforo Técnico": "❔ ERROR FILA",
+                        "Filtro Fiscal (Destino Seguro)": "Error", "Dividendo": "N/A",
+                        "Objetivo 12M (Potencial)": "No disp.", "Ratio Riesgo/Beneficio": "N/A", "Volatilidad (Beta)": "1.00"
+                    })
+            
+            if datos_lista:
+                df_mostrar = pd.DataFrame(datos_lista)
+                st.dataframe(df_mostrar, use_container_width=True)
+                st.caption(f"📊 Control de volumen total: {len(df_mostrar)} activos proyectados.")
+            else:
+                st.warning("Descargando datos...")
+
+    st.write("---")
+    st.write("### 🔍 Análisis Detallado Individual")
+    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos:", "COHR", key="input_individual_v8")
+    if accion:
+        try:
+            datos_hist = yf.Ticker(accion.upper().strip()).history(period="30d")
+            if not datos_hist.empty:
+                df_grafico = datos_hist[['Close']].copy()
+                df_grafico.index = df_grafico.index.date
+                st.line_chart(df_grafico, use_container_width=True)
+        except:
+            st.error("Error al localizar el Ticker.")
+
+# =========================================================
+# PESTAÑA 3: PANEL DE GESTIÓN DE LISTAS MAESTRAS
+# =========================================================
+with pestaña3:
+    st.subheader("⚙️ Panel de Gestión de Listas Maestras")
+    st.info("Estructura dinámica integrada. Permite modificar y dar de alta listas personalizadas en caliente.")
+    
+    # --- BLOQUE A: CREAR NUEVA LISTA ---
+    st.write("### 🆕 Inicializar una Nueva Lista Personalizada")
+    col_nueva1, col_nueva2 = st.columns([2, 1])
+    with col_nueva1:
+        nombre_nueva_lista = st.text_input("Nombre de la nueva lista (Ej: Mi_Selección_0%):", key="input_crear_lista")
+    with col_nueva2:
+        st.write("##")
+        if st.button("➕ Crear Lista", use_container_width=True):
+            if nombre_nueva_lista.strip() != "":
+                if nombre_nueva_lista.strip() not in st.session_state.mis_listas_limpias:
+                    st.session_state.mis_listas_limpias[nombre_nueva_lista.strip()] = []
+                    st.success(f"Lista '{nombre_nueva_lista.strip()}' creada con éxito.")
+                    st.rerun()
+                else:
+                    st.error("Ese nombre de lista ya existe.")
+            else:
+                st.warning("Introduce un nombre válido.")
+
+    st.write("---")
+    
+    # --- BLOQUE B: MODIFICAR LISTAS EXISTENTES (AÑADIR / BORRAR) ---
+    st.write("### 🛠️ Añadir o Borrar Acciones de una Lista")
+    lista_a_editar = st.selectbox("Selecciona la lista que deseas gestionar:", list(st.session_state.mis_listas_limpias.keys()), key="selector_edicion_listas")
+    
+    if lista_a_editar:
+        st.write(f"**Valores actuales en '{lista_a_editar}':** {st.session_state.mis_listas_limpias[lista_a_editar]}")
+        
+        c_add, c_del = st.columns(2)
+        
+        with c_add:
+            st.write("**Añadir Activo**")
+            ticker_nuevo = st.text_input("Ticker a introducir (Ej: AAPL o 6954.T):", key="input_add_ticker").strip().upper()
+            if st.button("📥 Insertar en Lista", use_container_width=True):
+                if ticker_nuevo != "":
+                    if ticker_nuevo not in st.session_state.mis_listas_limpias[lista_a_editar]:
+                        st.session_state.mis_listas_limpias[lista_a_editar].append(ticker_nuevo)
+                        st.success(f"'{ticker_nuevo}' añadido a {lista_a_editar}.")
+                        st.rerun()
+                    else:
+                        st.info(f"'{ticker_nuevo}' ya se encuentra en la lista.")
+                else:
+                    st.warning("Escribe un ticker válido.")
+                    
+        with c_del:
+            st.write("**Borrar Activo**")
+            if st.session_state.mis_listas_limpias[lista_a_editar]:
+                ticker_a_bajar = st.selectbox("Selecciona el ticker que deseas eliminar:", st.session_state.mis_listas_limpias[lista_a_editar], key="selector_baja_ticker")
+                if st.button("🗑️ Eliminar de Lista", use_container_width=True):
+                    st.session_state.mis_listas_limpias[lista_a_editar].remove(ticker_a_bajar)
+                    st.success(f"'{ticker_a_bajar}' eliminado de {lista_a_editar}.")
+                    st.rerun()
+            else:
+                st.write("*La lista está vacía actualmente.*")
+
+    st.write("---")
+    st.write("### 📊 Copia de Seguridad del Diccionario del Sistema")
+    st.json(st.session_state.mis_listas_limpias)
