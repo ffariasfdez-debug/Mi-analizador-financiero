@@ -141,4 +141,85 @@ with pestaña2:
                         
                     if h.empty:
                         datos_lista.append({
-                            "Ticker": tick, "Precio Actual": 0.0, "Semáforo Técnico
+                            "Ticker": tick, 
+                            "Precio Actual": 0.0, 
+                            "Semáforo Técnico": "❔ SIN DATOS",
+                            "Dividendo Anual": "0.00% 🟢", 
+                            "Objetivo 12M (Potencial)": "No disp.",
+                            "Ratio Riesgo/Beneficio": "N/A", 
+                            "Volatilidad (Beta)": "1.00"
+                        })
+                        continue
+                        
+                    p_actual = h['Close'].iloc[-1]
+                    p_media = h['Close'].mean()
+                    p_min = h['Low'].min()
+                    
+                    try:
+                        t_fund = yf.Ticker(tick)
+                        info = t_fund.info
+                        if not info or not isinstance(info, dict):
+                            info = {}
+                    except:
+                        info = {}
+                    
+                    # FILTRO DE DIVIDENDOS AUDITADO
+                    div_yield = info.get('trailingAnnualDividendYield', None)
+                    if div_yield is None:
+                        div_yield = info.get('dividendYield', 0.0)
+                        
+                    if div_yield and div_yield > 0.5:
+                        div_yield = div_yield / p_actual
+                        
+                    calc_yield_pct = div_yield * 100 if div_yield else 0.0
+                    if calc_yield_pct > 15.0: 
+                        calc_yield_pct = 0.0
+                        
+                    div_texto = f"{calc_yield_pct:.2f}%" if calc_yield_pct > 0.05 else "0.00% 🟢"
+                    
+                    # PRECIO OBJETIVO CONSENSO 12 MESES
+                    target_precio = info.get('targetMedianPrice', None)
+                    if target_precio and target_precio > 0 and target_precio < (p_actual * 4):
+                        potencial = ((target_precio - p_actual) / p_actual) * 100
+                        target_texto = f"{target_precio:.2f} ({potencial:+.1f}%)"
+                    else:
+                        target_precio = p_actual * 1.12
+                        target_texto = f"{p_actual * 1.12:.2f} (+12.0% Est.)"
+                    
+                    # RATIO RIESGO / BENEFICIO TÁCTICO
+                    riesgo_bajada = max(0.5, ((p_actual - p_min) / p_actual) * 100)
+                    beneficio_subida = max(0.5, ((target_precio - p_actual) / p_actual) * 100)
+                    ratio_rb = beneficio_subida / riesgo_bajada
+                    
+                    if ratio_rb >= 1.8:
+                        rb_texto = f"{ratio_rb:.1f}x 🔥 Excelente"
+                    elif ratio_rb >= 1.0:
+                        rb_texto = f"{ratio_rb:.1f}x 📊 Favorable"
+                    else:
+                        rb_texto = f"{ratio_rb:.1f}x ⚠️ Riesgo Alto"
+                        
+                    beta = info.get('beta', 1.0)
+                    beta_texto = f"{beta:.2f}" if beta else "1.00"
+
+                    if p_actual > (p_media * 1.02):
+                        sem_lista = "🟢 COMPRAR"
+                    elif p_actual < (p_media * 0.98):
+                        sem_lista = "🔴 EVITAR"
+                    else:
+                        sem_lista = "🟡 MANTENER"
+                        
+                    datos_lista.append({
+                        "Ticker": tick, 
+                        "Precio Actual": round(p_actual, 2), 
+                        "Semáforo Técnico": sem_lista,
+                        "Dividendo Anual": div_texto,
+                        "Objetivo 12M (Potencial)": target_texto,
+                        "Ratio Riesgo/Beneficio": rb_texto,
+                        "Volatilidad (Beta)": beta_texto
+                    })
+                except:
+                    datos_lista.append({
+                        "Ticker": tick, 
+                        "Precio Actual": 0.0, 
+                        "Semáforo Técnico": "❔ ERROR FILA",
+                        "Divid
