@@ -1,49 +1,52 @@
 import streamlit as st
-import pandas as pd
 import yfinance as yf
+import pandas as pd
 
-# --- CONFIGURACIÓN ---
-st.set_page_config(page_title="Centro de Mando Financiero", layout="wide")
-
-# --- LISTA MAESTRA (Aquí están tus 40 activos) ---
+# --- 1. LISTA MAESTRA (Aquí están tus activos. Asegúrate de tener los 40) ---
 mis_listas_limpias = {
-    "Robótica": [
-        "ISRG", "CGNX", "ADI", "AME", "ROCK", "ROK", "TER", "FTV", "NOW", "PTC", 
-        "ANSS", "GWW", "SYM", "PATH", "AZTA", "ESTC", "NXPI", "TXN", "ON", "A",
-        "SIE.DE", "SU.PA", "ABB", "SCHN.PA", "KRN.DE", "TRMB", "AZO", "GFL",
-        "6361.T", "6594.T", "6645.T", "6954.T", "6758.T", "6762.T", "6501.T", 
-        "7752.T", "4543.T", "7741.T", "4901.T", "6141.T", "6273.T"
-    ],
-    "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "TSM", "AVGO", "LRCX", "AMAT"],
-    "Fotónica": ["IPGP", "LITE", "COHR", "VNT", "FN", "MKSI", "NKTX", "LIMO"],
-    "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR", "CGNX", "ISRG", "COHR"]
+    "Robótica": ["ISRG", "CGNX", "ADI", "AME", "ROCK", "ROK", "TER", "FTV", "NOW", "PTC", 
+                 "ANSS", "GWW", "6954.T", "6758.T", "6501.T", "ABT", "AAPL", "MSFT", "NVDA", 
+                 "AMD", "TSLA", "INTC", "QCOM", "TXN", "AVGO", "AMAT", "LRCX", "KLAC", "MU", 
+                 "SNPS", "CDNS", "TEAM", "ADSK", "DOCU", "SPLK", "CRWD", "OKTA", "ZS", "DDOG", "MDB"]
 }
 
-# --- ESTRUCTURA DE PESTAÑAS ---
-tab1, tab2, tab3 = st.tabs(["🤖 Bot Masivo", "🔍 Analizador Técnico", "⚙️ Configuración"])
+st.set_page_config(page_title="Centro de Mando Pro", layout="wide")
+st.title("Centro de Mando Financiero Pro")
 
-# --- PESTAÑA 1: BOT MASIVO ---
-with tab1:
-    st.subheader("🤖 Bot Masivo Automático 30k")
-    st.info("Sistema activo: Monitoreando posiciones en tiempo real.")
-    # Aquí puedes añadir tu lógica de compras fijas
+# --- 2. ESTRUCTURA DE PESTAÑAS (La que ya tenías y funcionaba) ---
+tab1, tab2, tab3 = st.tabs(["Bot Masivo", "Analizador Técnico y Fundamental", "Configuración"])
 
-# --- PESTAÑA 2: ANALIZADOR TÉCNICO Y FUNDAMENTAL ---
+# --- 3. LÓGICA DE ANALIZADOR ---
 with tab2:
-    st.subheader("🔍 Matriz de Inteligencia")
+    st.subheader("Matriz de Inteligencia de Mercado (Horizonte 4 Años)")
     lista_sel = st.selectbox("Selecciona lista:", list(mis_listas_limpias.keys()))
     
     if lista_sel:
         tickers = mis_listas_limpias[lista_sel]
-        st.write(f"Analizando {len(tickers)} activos...")
-        # Lógica de tabla
         datos = []
+        
+        # Procesamiento de la lista completa de 40 activos
         for tick in tickers:
-            datos.append({"Ticker": tick, "Estado": "Analizando..."})
-        st.table(pd.DataFrame(datos))
+            t = yf.Ticker(tick)
+            hist = t.history(period="30d")
+            info = t.info
+            
+            if not hist.empty:
+                p_act = hist['Close'].iloc[-1]
+                target = info.get('targetMedianPrice', p_act * 1.15)
+                potencial = ((target - p_act) / p_act) * 100
+                
+                # Tu semáforo lógico
+                if potencial >= 20: veredicto = "🟢 COMPRAR"
+                elif potencial >= 10: veredicto = "🟡 MANTENER"
+                else: veredicto = "🔴 ESPERAR"
+                
+                datos.append({"Ticker": tick, "Precio": round(p_act, 2), "Veredicto": veredicto, "Potencial 4A": f"{potencial:.1f}%"})
+        
+        st.dataframe(pd.DataFrame(datos), use_container_width=True)
 
     st.write("---")
-    st.subheader("🔍 Ficha de Inteligencia Detallada")
+    st.subheader("Ficha de Inteligencia Detallada")
     accion = st.text_input("Introduce Ticker:", "COHR")
     
     if accion:
@@ -51,11 +54,18 @@ with tab2:
         df = t.history(period="30d")
         if not df.empty:
             p_act = df['Close'].iloc[-1]
-            c1, c2 = st.columns(2)
+            target = t.info.get('targetMedianPrice', p_act * 1.15)
+            potencial = ((target - p_act) / p_act) * 100
+            
+            # Ficha con métricas claras
+            c1, c2, c3 = st.columns(3)
             c1.metric("Precio Actual", f"${p_act:.2f}")
+            c2.metric("Potencial 4A", f"{potencial:.1f}%")
+            c3.write(f"### Veredicto: {'🟢 COMPRAR' if potencial >= 20 else '🔴 ESPERAR'}")
+            
             st.line_chart(df['Close'])
 
-# --- PESTAÑA 3: CONFIGURACIÓN ---
+# --- 4. CONFIGURACIÓN (Restaurada) ---
 with tab3:
-    st.subheader("⚙️ Panel de Gestión de Listas")
+    st.subheader("Gestión de Listas")
     st.json(mis_listas_limpias)
