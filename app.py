@@ -18,10 +18,16 @@ pestaña1, pestaña2, pestaña3 = st.tabs([
     "⚙️ Configuración de Listas Pregrabadas"
 ])
 
-# Tus listas maestras intactas
+# --- LISTAS MAESTRAS COMPLETAS ---
+# Añade aquí dentro todos los tickers que te falten hasta llegar a los 40
 listas_guardadas = {
     "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML"],
-    "Robótica": ["ADI", "AME", "ISRG", "CGNX", "ROCK", "ROK", "TER", "FTV", "NOW", "PTC", "ANSS", "GWW", "6954.T", "6758.T", "6501.T", "COHR"],
+    "Robótica": [
+        "ADI", "AME", "ISRG", "CGNX", "ROCK", "ROK", "TER", "FTV", 
+        "NOW", "PTC", "ANSS", "GWW", "6954.T", "6758.T", "6501.T", "COHR"
+        # ⚠️ PEGA AQUÍ LOS RECIENTES QUE FALTAN SEPARADOS POR COMAS, POR EJEMPLO:
+        # , "TSLA", "NVDA", "AAPL", "MSFT"
+    ],
     "Fotónica": ["IPGP", "LITE", "COHR"],
     "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR"]
 }
@@ -117,11 +123,9 @@ with pestaña2:
                     p_actual = h['Close'].iloc[-1]
                     p_media = h['Close'].mean()
                     
-                    # Consensuar Precio Objetivo estimado a largo plazo
                     target_val = info.get('targetMedianPrice', p_actual * 1.15)
                     potencial_val = ((target_val - p_actual) / p_actual) * 100
                     
-                    # Filtro inteligente combinado (Evitamos comprar si el potencial es ridículo)
                     if p_actual > p_media and potencial_val >= 15.0:
                         sem_lista = "🟢 COMPRAR (Valor + Inercia)"
                     elif potencial_val >= 20.0:
@@ -160,7 +164,6 @@ with pestaña2:
                 target_ind = info_ind.get('targetMedianPrice', precio_hoy * 1.15)
                 potencial_ind = ((target_ind - precio_hoy) / precio_hoy) * 100
                 
-                # --- NUEVA LÓGICA DE FILTRADO SIN CONTRADICCIONES ---
                 if potencial_ind >= 20.0:
                     estado_semaforo = "🟢 COMPRAR (POTENCIAL COMPLETO ACTIVO)"
                     tipo_alerta = "verde"
@@ -174,10 +177,10 @@ with pestaña2:
                     tipo_alerta = "rojo"
                     consejo_texto = f"Margen de beneficio insuficiente. El potencial estimado es de tan solo un {potencial_ind:.1f}% frente a su valor estimado ({target_ind:.2f}). Comprar aquí implica asumir un riesgo alto para un retorno muy bajo."
 
-                # --- NUEVA DISTRIBUCIÓN DE MÉTRICAS CLARAS EN FILA SUPERIOR ---
+                # --- FILA SUPERIOR MÉTRICAS UNIFICADAS ---
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Precio Actual", f"${precio_hoy:.2f}")
-                m2.metric("Objetivo Estimado", f"${target_val:.2f}")
+                m2.metric("Objetivo Estimado", f"${target_ind:.2f}")
                 m3.metric("Potencial Compuesto", f"{potencial_ind:.1f}%")
                 
                 with m4:
@@ -189,7 +192,6 @@ with pestaña2:
                     else:
                         st.error("🔴 DESCARTAR")
 
-                # Dictamen descriptivo justo debajo de los números
                 if tipo_alerta == "verde":
                     st.success(f"**Estrategia:** {consejo_texto}")
                 elif tipo_alerta == "amarillo":
