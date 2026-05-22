@@ -11,16 +11,15 @@ st.title("🎛️ Centro de Mando Financiero Pro")
 st.write(f"**Estado del Sistema:** Conectado en Vivo | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 st.write("---")
 
-# --- DICCIONARIO MAESTRO AMPLIADO A 40 ACTIVOS AUDITADOS ---
+# --- DICCIONARIO MAESTRO CON TICKERS INTERNACIONALES CORREGIDOS (.T para JAPÓN) ---
 mis_listas_limpias = {
     "Robótica": [
-        # --- Estados Unidos y Europa ---
+        # --- Estados Unidos y Europa (25 posiciones) ---
         "ISRG", "CGNX", "ADI", "AME", "ROCK", "ROK", "TER", "FTV", "NOW", "PTC", 
         "ANSS", "GWW", "SYM", "PATH", "AZTA", "ESTC", "NXPI", "TXN", "ON", "A",
-        "SIE.DE", "SU.PA", "ABB", "SCHN.PA", "KRN.DE", "TRMB", "AZO", "GFL",
-        # --- Japón (Extensiones nativas .T para evitar bloqueos) ---
-        "6361.T", "6594.T", "6645.T", "6954.T", "6758.T", "6762.T", "6501.T", 
-        "7752.T", "4543.T", "7741.T", "4901.T", "6141.T", "6273.T"
+        "SIE.DE", "SU.PA", "ABB", "SCHN.PA", "KRN.DE",
+        # --- Japón: Cambiados a Ticker de Tokio (.T) para evitar bloqueo de ADRs (11 posiciones) ---
+        "6361.T", "6594.T", "6645.T", "6954.T", "6758.T", "6762.T", "6501.T", "7752.T", "4543.T", "7741.T", "4901.T"
     ],
     "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "TSM", "AVGO", "LRCX", "AMAT"],
     "Fotónica": ["IPGP", "LITE", "COHR", "VNT", "FN", "MKSI", "NKTX", "LIMO"],
@@ -117,14 +116,15 @@ with pestaña2:
     st.subheader("🔍 Matriz de Inteligencia de Mercado (Flujos y Valoración)")
     
     st.write("### 📁 Cargar una Lista de Seguimiento Completa")
-    lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", list(mis_listas_limpias.keys()), key="selector_analisis_v8")
+    lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", list(mis_listas_limpias.keys()), key="selector_analisis_v7")
     
     if lista_sel:
         tickers_lista = mis_listas_limpias[lista_sel]
         
-        with st.spinner(f"Sincronizando flujos institucionales para {lista_sel}..."):
+        with st.spinner(f"Descargando bloque de mercado global para {lista_sel}..."):
             datos_lista = []
             
+            # Descarga paralela instantánea de precios
             try:
                 mkt_data = yf.download(tickers_lista, period="30d", group_by='ticker', progress=False)
             except:
@@ -133,6 +133,7 @@ with pestaña2:
             for tick in tickers_lista:
                 tick = tick.strip().upper()
                 try:
+                    # 1. Recuperar Historial de Precios
                     if not mkt_data.empty and tick in mkt_data:
                         h = mkt_data[tick].dropna(subset=['Close'])
                     else:
@@ -140,6 +141,7 @@ with pestaña2:
                         h = t_individual.history(period="30d")
                         
                     if h.empty:
+                        # Si Yahoo no da precio, forzamos fila vacía para no perder el recuento
                         datos_lista.append({
                             "Ticker": tick, "Precio Actual": 0.0, "Semáforo Técnico": "❔ SIN DATOS",
                             "Dividendo Anual": "0.00% 🟢", "Objetivo 12M (Potencial)": "No disp.",
@@ -151,6 +153,7 @@ with pestaña2:
                     p_media = h['Close'].mean()
                     p_min = h['Low'].min()
                     
+                    # 2. Descarga de Fundamentales
                     try:
                         t_fund = yf.Ticker(tick)
                         info = t_fund.info
@@ -159,7 +162,7 @@ with pestaña2:
                     except:
                         info = {}
                     
-                    # FILTRO DE DIVIDENDOS AUDITADO
+                    # 🔥 CÁLCULO DE DIVIDENDO ESTABLECE (Evita desfases de moneda local)
                     div_yield = info.get('trailingAnnualDividendYield', None)
                     if div_yield is None:
                         div_yield = info.get('dividendYield', 0.0)
@@ -173,7 +176,7 @@ with pestaña2:
                         
                     div_texto = f"{calc_yield_pct:.2f}%" if calc_yield_pct > 0.05 else "0.00% 🟢"
                     
-                    # PRECIO OBJETIVO CONSENSO 12 MESES
+                    # PRECIO OBJETIVO DE ANALISTAS (Ajustado a moneda local del ticker)
                     target_precio = info.get('targetMedianPrice', None)
                     if target_precio and target_precio > 0 and target_precio < (p_actual * 4):
                         potencial = ((target_precio - p_actual) / p_actual) * 100
@@ -223,13 +226,13 @@ with pestaña2:
             if datos_lista:
                 df_mostrar = pd.DataFrame(datos_lista)
                 st.dataframe(df_mostrar, use_container_width=True)
-                st.caption(f"📊 Control de volumen total: {len(df_mostrar)} activos proyectados de forma síncrona.")
+                st.caption(f"📊 Control de volumen total: {len(df_mostrar)} activos proyectados en pantalla.")
             else:
                 st.warning("Descargando datos...")
 
     st.write("---")
     st.write("### 🔍 Análisis Detallado Individual")
-    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos:", "COHR", key="input_individual_v8")
+    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos:", "COHR", key="input_individual_v7")
     if accion:
         try:
             datos_hist = yf.Ticker(accion.upper().strip()).history(period="30d")
@@ -243,4 +246,4 @@ with pestaña2:
 # =========================================================
 with pestaña3:
     st.subheader("⚙️ Panel de Gestión de Listas Maestras")
-    st.info("Estructura ampliada a 40 activos institucionales.")
+    st.info("Estructura internacional corregida usando tickers directos de la Bolsa de Tokio.")
