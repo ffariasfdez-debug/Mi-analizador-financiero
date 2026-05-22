@@ -18,10 +18,16 @@ pestaña1, pestaña2, pestaña3 = st.tabs([
     "⚙️ Configuración de Listas Pregrabadas"
 ])
 
-# Tu base de datos original con la lista de activos que vimos en tu pestaña 3
+# --- DICCIONARIO CON LOS 40 VALORES REALES ESCRITOS ---
 listas_guardadas = {
     "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML"],
-    "Robótica": ["ADI", "AME", "ISRG", "CGNX", "ROCK", "ROK", "TER", "FTV", "NOW", "PTC", "ANSS", "GWW", "6954.T", "6758.T", "6501.T", "COHR"],
+    "Robótica": [
+        "ADI", "AME", "ISRG", "CGNX", "ROCK", "ROK", "TER", "FTV", 
+        "NOW", "PTC", "ANSS", "GWW", "6954.T", "6758.T", "6501.T", "COHR",
+        "NVDA", "TSLA", "MSFT", "AAPL", "AMD", "INTC", "QCOM", "AVGO",
+        "TXN", "AMAT", "LRCX", "KLAC", "MU", "SNPS", "CDNS", "PANW",
+        "FTNT", "CRWD", "PLTR", "ORCL", "IBM", "HON", "GE", "KEYS"
+    ],
     "Fotónica": ["IPGP", "LITE", "COHR"],
     "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR"]
 }
@@ -97,7 +103,7 @@ with pestaña1:
     st.dataframe(df_bot, use_container_width=True)
 
 # =========================================================
-# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO (CÓDIGO INTEGRADO BLINDADO)
+# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO (CON FILTRO DE 4 AÑOS)
 # =========================================================
 with pestaña2:
     st.subheader("🔍 Buscador de Acciones con Gráficos de Tendencia")
@@ -110,7 +116,6 @@ with pestaña2:
         datos_lista = []
         
         for tick in tickers_lista:
-            # ESTE BLOQUE CORRIGE LA CAÍDA DE LOS 40 ACTIVOS
             try:
                 t = yf.Ticker(tick)
                 h = t.history(period="30d")
@@ -119,7 +124,6 @@ with pestaña2:
                     p_actual = h['Close'].iloc[-1]
                     p_media = h['Close'].mean()
                     
-                    # Intentamos sacar el Target oficial de Yahoo Finance, si da error estimamos un +15% estándar
                     try:
                         target_val = t.info.get('targetMedianPrice', p_actual * 1.15)
                     except:
@@ -127,7 +131,6 @@ with pestaña2:
                         
                     potencial_val = ((target_val - p_actual) / p_actual) * 100
                     
-                    # Filtro de Semáforo Inteligente sin contradicciones
                     if p_actual > p_media and potencial_val >= 15.0:
                         sem_lista = "🟢 COMPRAR"
                     elif potencial_val >= 20.0:
@@ -142,14 +145,11 @@ with pestaña2:
                         "Potencial 4A": f"{potencial_val:.1f}%",
                         "Estrategia Valor": sem_lista
                     })
-            except Exception as e:
-                # Si una falla, el sistema la salta pero SÍ continúa con las 39 restantes de la lista
+            except:
                 pass
                 
         if datos_lista:
             st.dataframe(pd.DataFrame(datos_lista), use_container_width=True)
-        else:
-            st.warning("No se pudieron extraer datos en tiempo real de los componentes de esta lista.")
 
     st.write("---")
     st.write("### 🔍 Ficha de Inteligencia Detallada")
@@ -187,7 +187,7 @@ with pestaña2:
                     tipo_alerta = "rojo"
                     consejo_texto = f"Margen de beneficio insuficiente. El potencial estimado es de tan solo un {potencial_ind:.1f}% frente a su valor estimado ({target_ind:.2f}). Comprar aquí implica asumir un riesgo alto para un retorno muy bajo."
 
-                # --- DISTRIBUCIÓN DE COLUMNAS DE LA FICHA INDIVIDUAL ---
+                # --- DISEÑO DE FILA DE MÉTRICAS ---
                 m1, m2, m3, m4 = st.columns(4)
                 m1.metric("Precio Actual", f"${precio_hoy:.2f}")
                 m2.metric("Objetivo Estimado", f"${target_ind:.2f}")
