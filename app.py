@@ -6,31 +6,31 @@ from datetime import datetime
 # Configuración de la página completa
 st.set_page_config(page_title="Centro de Mando Financiero", layout="wide")
 
-# --- TITULO PRINCIPAL ---
+# --- TÍTULO PRINCIPAL ---
 st.title("🎛️ Centro de Mando Financiero Pro")
 st.write(f"**Estado del Sistema:** Conectado en Vivo | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 st.write("---")
 
-# --- DICCIONARIO MAESTRO CON TICKERS INTERNACIONALES CORREGIDOS (.T para JAPÓN) ---
-mis_listas_limpias = {
-    "Robótica": [
-        # --- Estados Unidos y Europa (25 posiciones) ---
-        "ISRG", "CGNX", "ADI", "AME", "ROCK", "ROK", "TER", "FTV", "NOW", "PTC", 
-        "ANSS", "GWW", "SYM", "PATH", "AZTA", "ESTC", "NXPI", "TXN", "ON", "A",
-        "SIE.DE", "SU.PA", "ABB", "SCHN.PA", "KRN.DE",
-        # --- Japón: Cambiados a Ticker de Tokio (.T) para evitar bloqueo de ADRs (11 posiciones) ---
-        "6361.T", "6594.T", "6645.T", "6954.T", "6758.T", "6762.T", "6501.T", "7752.T", "4543.T", "7741.T", "4901.T"
-    ],
-    "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "TSM", "AVGO", "LRCX", "AMAT"],
-    "Fotónica": ["IPGP", "LITE", "COHR", "VNT", "FN", "MKSI", "NKTX", "LIMO"],
-    "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR", "CGNX", "ISRG", "COHR"]
-}
+# --- INITIALIZACIÓN DINÁMICA DE LISTAS EN SESIÓN (Para evitar pérdidas al recargar) ---
+if "mis_listas_limpias" not in st.session_state:
+    st.session_state.mis_listas_limpias = {
+        "Robótica": [
+            "ISRG", "CGNX", "ADI", "AME", "ROCK", "ROK", "TER", "FTV", "NOW", "PTC", 
+            "ANSS", "GWW", "SYM", "PATH", "AZTA", "ESTC", "NXPI", "TXN", "ON", "A",
+            "SIE.DE", "SU.PA", "ABB", "SCHN.PA", "KRN.DE", "TRMB", "AZO", "GFL",
+            "6361.T", "6594.T", "6645.T", "6954.T", "6758.T", "6762.T", "6501.T", 
+            "7752.T", "4543.T", "7741.T", "4901.T", "6141.T", "6273.T"
+        ],
+        "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "TSM", "AVGO", "LRCX", "AMAT"],
+        "Fotónica": ["IPGP", "LITE", "COHR", "VNT", "FN", "MKSI", "NKTX", "LIMO"],
+        "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR", "CGNX", "ISRG", "COHR"]
+    }
 
 # --- MENÚ DE PESTAÑAS PRINCIPALES ---
 pestaña1, pestaña2, pestaña3 = st.tabs([
     "🤖 Bot Masivo Automático 30k", 
     "🔍 Analizador Técnico y Fundamental", 
-    "⚙️ Configuración de Listas Pregrabadas"
+    "⚙️ Panel de Gestión de Listas Maestras"
 ])
 
 # =========================================================
@@ -113,137 +113,4 @@ with pestaña1:
 # PESTAÑA 2: ANALIZADOR TÉCNICO Y FUNDAMENTAL AVANZADO
 # =========================================================
 with pestaña2:
-    st.subheader("🔍 Matriz de Inteligencia de Mercado (Flujos y Valoración)")
-    
-    st.write("### 📁 Cargar una Lista de Seguimiento Completa")
-    lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", list(mis_listas_limpias.keys()), key="selector_analisis_v7")
-    
-    if lista_sel:
-        tickers_lista = mis_listas_limpias[lista_sel]
-        
-        with st.spinner(f"Descargando bloque de mercado global para {lista_sel}..."):
-            datos_lista = []
-            
-            # Descarga paralela instantánea de precios
-            try:
-                mkt_data = yf.download(tickers_lista, period="30d", group_by='ticker', progress=False)
-            except:
-                mkt_data = pd.DataFrame()
-                
-            for tick in tickers_lista:
-                tick = tick.strip().upper()
-                try:
-                    # 1. Recuperar Historial de Precios
-                    if not mkt_data.empty and tick in mkt_data:
-                        h = mkt_data[tick].dropna(subset=['Close'])
-                    else:
-                        t_individual = yf.Ticker(tick)
-                        h = t_individual.history(period="30d")
-                        
-                    if h.empty:
-                        # Si Yahoo no da precio, forzamos fila vacía para no perder el recuento
-                        datos_lista.append({
-                            "Ticker": tick, "Precio Actual": 0.0, "Semáforo Técnico": "❔ SIN DATOS",
-                            "Dividendo Anual": "0.00% 🟢", "Objetivo 12M (Potencial)": "No disp.",
-                            "Ratio Riesgo/Beneficio": "N/A", "Volatilidad (Beta)": "1.00"
-                        })
-                        continue
-                        
-                    p_actual = h['Close'].iloc[-1]
-                    p_media = h['Close'].mean()
-                    p_min = h['Low'].min()
-                    
-                    # 2. Descarga de Fundamentales
-                    try:
-                        t_fund = yf.Ticker(tick)
-                        info = t_fund.info
-                        if not info or not isinstance(info, dict):
-                            info = {}
-                    except:
-                        info = {}
-                    
-                    # 🔥 CÁLCULO DE DIVIDENDO ESTABLECE (Evita desfases de moneda local)
-                    div_yield = info.get('trailingAnnualDividendYield', None)
-                    if div_yield is None:
-                        div_yield = info.get('dividendYield', 0.0)
-                    
-                    if div_yield and div_yield > 0.5:
-                        div_yield = div_yield / p_actual
-                        
-                    calc_yield_pct = div_yield * 100 if div_yield else 0.0
-                    if calc_yield_pct > 15.0: 
-                        calc_yield_pct = 0.0
-                        
-                    div_texto = f"{calc_yield_pct:.2f}%" if calc_yield_pct > 0.05 else "0.00% 🟢"
-                    
-                    # PRECIO OBJETIVO DE ANALISTAS (Ajustado a moneda local del ticker)
-                    target_precio = info.get('targetMedianPrice', None)
-                    if target_precio and target_precio > 0 and target_precio < (p_actual * 4):
-                        potencial = ((target_precio - p_actual) / p_actual) * 100
-                        target_texto = f"{target_precio:.2f} ({potencial:+.1f}%)"
-                    else:
-                        target_precio = p_actual * 1.12
-                        target_texto = f"{p_actual * 1.12:.2f} (+12.0% Est.)"
-                    
-                    # RATIO RIESGO / BENEFICIO TÁCTICO
-                    riesgo_bajada = max(0.5, ((p_actual - p_min) / p_actual) * 100)
-                    beneficio_subida = max(0.5, ((target_precio - p_actual) / p_actual) * 100)
-                    ratio_rb = beneficio_subida / riesgo_bajada
-                    
-                    if ratio_rb >= 1.8:
-                        rb_texto = f"{ratio_rb:.1f}x 🔥 Excelente"
-                    elif ratio_rb >= 1.0:
-                        rb_texto = f"{ratio_rb:.1f}x 📊 Favorable"
-                    else:
-                        rb_texto = f"{ratio_rb:.1f}x ⚠️ Riesgo Alto"
-                        
-                    beta = info.get('beta', 1.0)
-                    beta_texto = f"{beta:.2f}" if beta else "1.00"
-
-                    if p_actual > (p_media * 1.02):
-                        sem_lista = "🟢 COMPRAR"
-                    elif p_actual < (p_media * 0.98):
-                        sem_lista = "🔴 EVITAR"
-                    else:
-                        sem_lista = "🟡 MANTENER"
-                        
-                    datos_lista.append({
-                        "Ticker": tick, 
-                        "Precio Actual": round(p_actual, 2), 
-                        "Semáforo Técnico": sem_lista,
-                        "Dividendo Anual": div_texto,
-                        "Objetivo 12M (Potencial)": target_texto,
-                        "Ratio Riesgo/Beneficio": rb_texto,
-                        "Volatilidad (Beta)": beta_texto
-                    })
-                except:
-                    datos_lista.append({
-                        "Ticker": tick, "Precio Actual": 0.0, "Semáforo Técnico": "❔ ERROR FILA",
-                        "Dividendo Anual": "0.00% 🟢", "Objetivo 12M (Potencial)": "No disp.",
-                        "Ratio Riesgo/Beneficio": "N/A", "Volatilidad (Beta)": "1.00"
-                    })
-            
-            if datos_lista:
-                df_mostrar = pd.DataFrame(datos_lista)
-                st.dataframe(df_mostrar, use_container_width=True)
-                st.caption(f"📊 Control de volumen total: {len(df_mostrar)} activos proyectados en pantalla.")
-            else:
-                st.warning("Descargando datos...")
-
-    st.write("---")
-    st.write("### 🔍 Análisis Detallado Individual")
-    accion = st.text_input("Introduce el Ticker de la acción para generar Gráficos:", "COHR", key="input_individual_v7")
-    if accion:
-        try:
-            datos_hist = yf.Ticker(accion.upper().strip()).history(period="30d")
-            if not datos_hist.empty:
-                st.line_chart(datos_hist['Close'])
-        except:
-            st.error("Error al localizar el Ticker.")
-
-# =========================================================
-# PESTAÑA 3: CONFIGURACIÓN
-# =========================================================
-with pestaña3:
-    st.subheader("⚙️ Panel de Gestión de Listas Maestras")
-    st.info("Estructura internacional corregida usando tickers directos de la Bolsa de Tokio.")
+    st.subheader("🔍
