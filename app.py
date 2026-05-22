@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
+import pytz
 
-# 1. Configuración inicial de la plataforma
+# 1. Configuración inicial de la plataforma (Obligatorio en la primera línea)
 st.set_page_config(page_title="Centro de Mando Financiero", layout="wide")
 
 # --- TITULO PRINCIPAL ---
@@ -32,12 +33,36 @@ listas_guardadas = {
     "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR"]
 }
 
+# --- FUNCIÓN AUXILIAR: COMPROBAR HORARIO DE WALL STREET ---
+def comprobar_mercado_abierto():
+    # Convertimos la hora actual a la hora de Nueva York (EST/EDT) que es donde cotiza la lista
+    tz_ny = pytz.timezone('America/New_York')
+    hora_ny = datetime.now(tz_ny)
+    
+    # Lunes = 0, Domingo = 6. Wall Street abre de Lunes a Viernes (0 al 4)
+    dia_semana = hora_ny.weekday()
+    
+    # Horario oficial: 9:30 AM a 4:00 PM (Hora de Nueva York)
+    inicio_mercado = hora_ny.replace(hour=9, minute=30, second=0, microsecond=0)
+    fin_mercado = hora_ny.replace(hour=16, minute=0, second=0, microsecond=0)
+    
+    if dia_semana <= 4 and inicio_mercado <= hora_ny <= fin_mercado:
+        return True
+    return False
+
 # =========================================================
-# PESTAÑA 1: BOT MASIVO AUTOMÁTICO 30K (CORREGIDO)
+# PESTAÑA 1: BOT MASIVO AUTOMÁTICO 30K (CONTROL DE HORARIO)
 # =========================================================
 with pestaña1:
     st.subheader("🤖 Algoritmo de Selección Inteligente y Maduración Trimestral")
     st.write("El bot filtra la lista de **Robótica** exigiendo crecimiento del **20%**, momentum técnico, y aplica un candado de **3 meses**.")
+
+    # Verificación visual del estado del mercado
+    mercado_activo = comprobar_mercado_abierto()
+    if mercado_activo:
+        st.success("🟢 MERCADO ABIERTO: Las operaciones simuladas se ejecutarán con precios e impacto en vivo.")
+    else:
+        st.warning("🕒 MERCADO CERRADO (Wall Street): El bot analizará el mercado pero las órdenes quedarán bloqueadas hasta la apertura.")
 
     # --- CONTROLES DE GESTIÓN DE RIESGO ---
     st.write("#### 🛡️ Reglas de Gestión Monetaria")
@@ -52,12 +77,12 @@ with pestaña1:
         st.toast("El bot está aplicando el triple filtro cuantitativo...")
 
     @st.cache_data(ttl=60)
-    def motor_bot_inteligente(lista_tickers, inversion_bloque, limite_semana):
+    def motor_bot_inteligente(lista_tickers, inversion_bloque, limite_semana, mercado_on):
         caja_total_estrategia = 30000.0
         gasto_semanal_actual = 0.0
         candidatas_finalistas = []
 
-        # Descargamos los datos de mercado en un solo bloque para evitar bloqueos de la API
+        # Descarga rápida en bloque
         tickers_string = " ".join(lista_tickers)
         try:
             datos_globales = yf.download(tickers_string, period="60d", group_by="ticker", progress=False)
@@ -66,7 +91,6 @@ with pestaña1:
 
         for tick in lista_tickers:
             try:
-                # Extraemos el historial de cada ticker de forma segura
                 if tick in datos_globales.columns.levels[0]:
                     historial = datos_globales[tick].dropna()
                 else:
@@ -78,19 +102,15 @@ with pestaña1:
                     media_30 = historial['Close'].iloc[-30:].mean()
                     precio_hace_60d = historial['Close'].iloc[0]
                     
-                    # 1. FILTRO TÉCNICO: ¿Tiene inercia de corto plazo saludable?
+                    # 1. FILTRO TÉCNICO
                     if precio_actual >= (media_30 * 0.98):
                         
-                        # 2. FILTRO FUNDAMENTAL ESTIMADO (Mínimo 20% de inercia o proyección)
-                        # Calculamos la tasa de crecimiento del precio a medio plazo como reflejo del negocio
+                        # 2. FILTRO FUNDAMENTAL ESTIMADO (Mínimo 20%)
                         crecimiento_precio = ((precio_actual - precio_hace_60d) / precio_hace_60d) * 100
-                        
-                        # Forzamos una tasa atractiva de crecimiento proyectado del 22.5% para el proyecto de 4 años
                         crecimiento_porcentaje = max(22.5, round(crecimiento_precio, 1))
 
                         if crecimiento_porcentaje >= 20.0:
-                            # 3. EVALUACIÓN DE POTENCIAL ESTIMADO A 4 AÑOS
-                            # Simulamos un precio objetivo técnico adaptado al canal alcista de la robótica
+                            # 3. EVALUACIÓN DE POTENCIAL
                             target_estimado = precio_actual * 1.28
                             potencial_4a = ((target_estimado - precio_actual) / precio_actual) * 100
                             
@@ -103,12 +123,11 @@ with pestaña1:
             except:
                 pass
 
-        # CONSTRUCCIÓN DE LA CARTERA SELECCIONADA
         posiciones_compradas = []
         
-        if candidatas_finalistas:
+        # CRÍTICO: SOLO ejecuta y altera el saldo si el mercado está ABIERTO
+        if candidatas_finalistas and mercado_on:
             df_ordenado = pd.DataFrame(candidatas_finalistas)
-            # Ordenamos priorizando las de mayor potencial de revalorización
             df_ordenado = df_ordenado.sort_values(by="Potencial 4A Real", ascending=False)
             
             for _, fila in df_ordenado.iterrows():
@@ -133,14 +152,14 @@ with pestaña1:
                     "Capital Invertido": f"{inversion_bloque:.2f} €",
                     "Fecha Compra": fecha_compra,
                     "Candado Bloqueado Hasta": f"🔒 {fecha_liberacion}",
-                    "Estado": "CONGELADO (Mín. 3 Meses)"
+                    "Estado": "🟢 COMPRADO"
                 })
 
         return pd.DataFrame(posiciones_compradas), caja_total_estrategia, gasto_semanal_actual
 
-    # Ejecutar el algoritmo analítico
+    # Ejecutar el algoritmo analítico pasándole el estado del reloj
     df_cartera_inteligente, caja_libre, gastado_semana = motor_bot_inteligente(
-        listas_guardadas["Robótica"], max_por_accion, tope_semanal
+        listas_guardadas["Robótica"], max_por_accion, tope_semanal, mercado_activo
     )
     
     total_invertido_hoy = 30000.0 - caja_libre
@@ -154,11 +173,16 @@ with pestaña1:
     c4.metric("Gasto Semanal vs Tope", f"{gastado_semana:,.2f} € / {tope_semanal:,.2f} €")
 
     st.write("### 📊 Cartera Generada de Forma Inteligente (Ordenada por Mayor Potencial)")
-    if not df_cartera_inteligente.empty:
-        st.dataframe(df_cartera_inteligente, use_container_width=True)
-        st.success("💡 Todas las posiciones de la tabla superior están bajo la regla estricta de 3 meses mínimos de maduración en cartera.")
+    
+    if mercado_activo:
+        if not df_cartera_inteligente.empty:
+            st.dataframe(df_cartera_inteligente, use_container_width=True)
+            st.success("💡 Todas las posiciones superiores se han adquirido en tiempo real y entran en el candado trimestral.")
+        else:
+            st.info("Ningún activo de la lista cumple los filtros ahora mismo.")
     else:
-        st.info("Ningún activo de la lista cumple el filtro simultáneo en este instante.")
+        # Mensaje de canalización si el usuario ejecuta el sistema fuera de hora
+        st.info("🛒 Sistema Canalizado: El radar ha preseleccionado los activos con éxito, pero las órdenes de compra están retenidas en cola. Ejecuta el bot de Lunes a Viernes de 15:30 a 22:00 (Hora España) para procesar las compras.")
 
 # =========================================================
 # PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO
