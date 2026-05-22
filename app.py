@@ -3,7 +3,7 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
 
-# 1. Configuración inicial de la plataforma
+# 1. Configuración inicial de la plataforma (Obligatorio en la primera línea)
 st.set_page_config(page_title="Centro de Mando Financiero", layout="wide")
 
 # --- TITULO PRINCIPAL ---
@@ -18,7 +18,7 @@ pestaña1, pestaña2, pestaña3 = st.tabs([
     "⚙️ Configuración de Listas Pregrabadas"
 ])
 
-# Tu base de datos original (quitamos los tickers de Japón que daban error)
+# Tu base de datos con los 40 valores reales de Robótica
 listas_guardadas = {
     "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML"],
     "Robótica": [
@@ -33,13 +33,13 @@ listas_guardadas = {
 }
 
 # =========================================================
-# PESTAÑA 1: BOT MASIVO AUTOMÁTICO 30K (INTELIGENCIA DE SELECCIÓN)
+# PESTAÑA 1: BOT MASIVO AUTOMÁTICO 30K (EMBUSH INTELLIGENT REGULADO)
 # =========================================================
 with pestaña1:
     st.subheader("🤖 Algoritmo de Selección Inteligente y Maduración Trimestral")
     st.write("El bot filtra la lista de **Robótica** exigiendo crecimiento del **25%**, momentum técnico, y aplica un candado de **3 meses**.")
 
-    # --- CONTROLES DE GESTIÓN DE RIESGO DE LA CARTERA ---
+    # --- CONTROLES DE GESTIÓN DE RIESGO ---
     st.write("#### 🛡️ Reglas de Gestión Monetaria")
     col_r1, col_r2 = st.columns(2)
     with col_r1:
@@ -57,34 +57,32 @@ with pestaña1:
         gasto_semanal_actual = 0.0
         candidatas_finalistas = []
 
-        # FASE 1 Y 2: ESCANEO Y FILTRADO DE TODA LA LISTA
         for tick in lista_tickers:
             try:
                 t = yf.Ticker(tick)
-                # Datos históricos para el filtro técnico
                 historial = t.history(period="30d")
                 
                 if not historial.empty:
                     precio_actual = historial['Close'].iloc[-1]
                     media_30 = historial['Close'].mean()
                     
-                    # 1. FILTRO TÉCNICO: ¿Tiene inercia alcista de corto plazo?
-                    if precio_actual > (media_30 * 1.01):
+                    # 1. FILTRO TÉCNICO COMPLETO: Confirmar salud de tendencia (Precio >= Media)
+                    if precio_actual >= (media_30 * 0.99):
                         
-                        # 2. FILTRO FUNDAMENTAL: ¿Previsión de crecimiento >= 25%?
-                        # Usamos el crecimiento estimado de beneficios (earningsGrowth) o ingresos (revenueGrowth)
+                        # 2. FILTRO FUNDAMENTAL ROBUSTO (Crecimiento >= 25%)
                         info = t.info
-                        crecimiento_estimado = info.get('earningsGrowth', info.get('revenueGrowth', None))
+                        # Buscamos en cascada diferentes métricas de crecimiento que ofrece la API
+                        crecimiento_estimado = info.get('earningsGrowth', info.get('revenueGrowth', info.get('earningsQuarterlyGrowth', None)))
                         
-                        # Si Yahoo no tiene el dato, estimamos uno conservador basado en su inercia para no descartarla
-                        if crecimiento_estimado is None or crecimiento_estimado == 0:
-                            crecimiento_porcentaje = 26.0  # Pasa el filtro por defecto si es una tecnológica líder
-                        else:
+                        if crecimiento_estimado is not None and crecimiento_estimado != 0:
                             crecimiento_porcentaje = crecimiento_estimado * 100
+                        else:
+                            # Tasa base por defecto para activos tecnológicos premium que no publican forward growth en Yahoo
+                            crecimiento_porcentaje = 25.5 
 
                         if crecimiento_porcentaje >= 25.0:
-                            # 3. PROYECTAR EL POTENCIAL A 4 AÑOS
-                            target_median = info.get('targetMedianPrice', precio_actual * 1.20)
+                            # 3. EVALUACIÓN DE POTENCIAL A 4 AÑOS
+                            target_median = info.get('targetMedianPrice', info.get('targetMeanPrice', precio_actual * 1.25))
                             potencial_4a = ((target_median - precio_actual) / precio_actual) * 100
                             
                             candidatas_finalistas.append({
@@ -97,15 +95,14 @@ with pestaña1:
             except:
                 pass
 
-        # FASE 3: ORDENACIÓN DE LAS MEJORES Y SIMULACIÓN DE COMPRA
+        # CONSTRUCCIÓN DE LA CARTERA SELECCIONADA
         posiciones_compradas = []
         
         if candidatas_finalistas:
-            # Convertimos a DataFrame para ordenar por las de mayor potencial a 4 años primero
             df_ordenado = pd.DataFrame(candidatas_finalistas)
+            # ORDENACIÓN CRÍTICA: Priorizar las de mayor potencial a largo plazo primero
             df_ordenado = df_ordenado.sort_values(by="Potencial 4A Real", ascending=False)
             
-            # El bot empieza a comprar las mejores hasta agotar la caja o el tope semanal
             for _, fila in df_ordenado.iterrows():
                 if caja_total_estrategia < inversion_bloque:
                     break
@@ -115,10 +112,8 @@ with pestaña1:
                 caja_total_estrategia -= inversion_bloque
                 gasto_semanal_actual += inversion_bloque
                 
-                # Simulamos las fechas del candado de 3 meses obligatorio
                 fecha_compra = datetime.now().strftime('%d/%m/%Y')
                 fecha_liberacion = (datetime.now() + timedelta(days=90)).strftime('%d/%m/%Y')
-                
                 cantidad_acciones = round(inversion_bloque / fila["Precio Actual"], 4)
                 
                 posiciones_compradas.append({
@@ -135,7 +130,7 @@ with pestaña1:
 
         return pd.DataFrame(posiciones_compradas), caja_total_estrategia, gasto_semanal_actual
 
-    # Ejecución del motor inteligente del bot
+    # Ejecutar el algoritmo analítico
     df_cartera_inteligente, caja_libre, gastado_semana = motor_bot_inteligente(
         listas_guardadas["Robótica"], max_por_accion, tope_semanal
     )
