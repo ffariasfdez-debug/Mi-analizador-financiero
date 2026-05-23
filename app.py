@@ -19,15 +19,13 @@ pestaña1, pestaña2, pestaña3 = st.tabs([
     "⚙️ Configuración de Listas Pregrabadas"
 ])
 
-# Tu base de datos con los 40 valores reales de Robótica
+# Base de datos optimizada para máxima velocidad en Yahoo Finance (Robótica Pura)
 listas_guardadas = {
-    "Semiconductores": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML"],
-    "Robótica": [
-        "ADI", "AME", "ISRG", "CGNX", "ROCK", "ROK", "TER", "FTV", 
-        "NOW", "PTC", "ANSS", "GWW", "COHR", "NVDA", "TSLA", "MSFT", 
-        "AAPL", "AMD", "INTC", "QCOM", "AVGO", "TXN", "AMAT", "LRCX", 
-        "KLAC", "MU", "SNPS", "CDNS", "PANW", "FTNT", "CRWD", "PLTR", 
-        "ORCL", "IBM", "HON", "GE", "KEYS"
+    "Semiconductores Premium": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML"],
+    "Robótica Pura": [
+        "ISRG", "ZBH", "STE", "ROK", "CGNX", "TER", 
+        "ATS", "SYM", "GWW", "AME", "ADI", "FTV", "KEYS", "PTC", 
+        "ANSS", "ROCK", "COHR", "DE", "CAT", "AVAV", "GE", "HON"
     ],
     "Fotónica": ["IPGP", "LITE", "COHR"],
     "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR"]
@@ -51,7 +49,7 @@ def comprobar_mercado_abierto():
 # =========================================================
 with pestaña1:
     st.subheader("🤖 Algoritmo de Selección Inteligente y Maduración Trimestral")
-    st.write("El bot filtra la lista de **Robótica** exigiendo crecimiento del **20%**, momentum técnico, y aplica un candado de **3 meses**.")
+    st.write("El bot filtra la lista de **Robótica Pura** exigiendo crecimiento del **20%**, momentum técnico, y aplica un candado de **3 meses**.")
 
     mercado_activo = comprobar_mercado_abierto()
     if mercado_activo:
@@ -145,7 +143,7 @@ with pestaña1:
         return pd.DataFrame(posiciones_compradas), caja_total_estrategia, gasto_semanal_actual
 
     df_cartera_inteligente, caja_libre, gastado_semana = motor_bot_inteligente(
-        listas_guardadas["Robótica"], max_por_accion, tope_semanal, mercado_activo
+        listas_guardadas["Robótica Pura"], max_por_accion, tope_semanal, mercado_activo
     )
     
     total_invertido_hoy = 30000.0 - caja_libre
@@ -168,7 +166,7 @@ with pestaña1:
         st.info("🛒 Sistema Canalizado: El radar ha preseleccionado los activos con éxito, pero las órdenes de compra están retenidas en cola. Ejecuta el bot de Lunes a Viernes de 15:30 a 22:00 (Hora España) para procesar las compras.")
 
 # =========================================================
-# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO (RESTAURADA)
+# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO
 # =========================================================
 with pestaña2:
     st.subheader("🔍 Buscador de Acciones con Gráficos de Tendencia")
@@ -216,9 +214,8 @@ with pestaña2:
             st.dataframe(pd.DataFrame(datos_lista), use_container_width=True)
 
     st.write("---")
-    # --- AQUÍ ESTÁ LA PARTE RESTAURADA ---
     st.write("### 🔍 Opción B: Ficha de Inteligencia Individual Detallada")
-    accion = st.text_input("Introduce el Ticker de una acción para analizar en individual (Ej: COHR, NVDA, TSLA):", "COHR")
+    accion = st.text_input("Introduce el Ticker de una acción para analizar en individual (Ej: ISRG, ROK, DE):", "ISRG")
     
     if accion:
         accion = accion.upper()
@@ -230,18 +227,15 @@ with pestaña2:
                 p_actual_ind = datos_hist['Close'].iloc[-1]
                 p_media_ind = datos_hist['Close'].mean()
                 
-                # Cálculo de semáforo individual rápido
                 if p_actual_ind > p_media_ind:
                     estado_ind = "🟢 ALCISTA (Por encima de su media)"
                 else:
                     estado_ind = "🔴 COLA DE PRECIO (Por debajo de su media)"
                 
-                # Mostrar métricas del activo individual
                 col_i1, col_i2 = st.columns(2)
                 col_i1.metric(f"Precio Actual de {accion}", f"{p_actual_ind:.2f} €")
                 col_i2.metric("Diagnóstico de Tendencia", estado_ind)
                 
-                # Dibujar gráfico
                 st.write(f"**📉 Evolución de Precio de {accion} (Últimos 30 días)**")
                 st.line_chart(datos_hist['Close'])
             else:
@@ -253,5 +247,15 @@ with pestaña2:
 # PESTAÑA 3: CONFIGURACIÓN DE LISTAS PREGRABADAS
 # =========================================================
 with pestaña3:
-    st.subheader("⚙️ Panel de Gestión de Listas")
-    st.json(listas_guardadas)
+    st.subheader("⚙️ Panel de Control y Consulta de Listas Pregrabadas")
+    st.write("Aquí puedes supervisar los tickers que componen las bases de datos internas de tu algoritmo.")
+    
+    lista_a_revisar = st.selectbox("Selecciona una lista para ver sus componentes:", list(listas_guardadas.keys()))
+    
+    if lista_a_revisar:
+        tickers_en_lista = listas_guardadas[lista_a_revisar]
+        
+        st.info(f"📋 La lista **{lista_a_revisar}** contiene actualmente **{len(tickers_en_lista)}** activos configurados.")
+        
+        df_tickers = pd.DataFrame(tickers_en_lista, columns=["Ticker Oficial (Yahoo Finance)"])
+        st.dataframe(df_tickers, use_container_width=True)
