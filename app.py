@@ -1,4 +1,5 @@
-import streamlit as st
+
+                       import streamlit as st
 import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
@@ -35,14 +36,10 @@ listas_guardadas = {
 
 # --- FUNCIÓN AUXILIAR: COMPROBAR HORARIO DE WALL STREET ---
 def comprobar_mercado_abierto():
-    # Convertimos la hora actual a la hora de Nueva York (EST/EDT) que es donde cotiza la lista
     tz_ny = pytz.timezone('America/New_York')
     hora_ny = datetime.now(tz_ny)
-    
-    # Lunes = 0, Domingo = 6. Wall Street abre de Lunes a Viernes (0 al 4)
     dia_semana = hora_ny.weekday()
     
-    # Horario oficial: 9:30 AM a 4:00 PM (Hora de Nueva York)
     inicio_mercado = hora_ny.replace(hour=9, minute=30, second=0, microsecond=0)
     fin_mercado = hora_ny.replace(hour=16, minute=0, second=0, microsecond=0)
     
@@ -51,20 +48,18 @@ def comprobar_mercado_abierto():
     return False
 
 # =========================================================
-# PESTAÑA 1: BOT MASIVO AUTOMÁTICO 30K (CONTROL DE HORARIO)
+# PESTAÑA 1: BOT MASIVO AUTOMÁTICO 30K
 # =========================================================
 with pestaña1:
     st.subheader("🤖 Algoritmo de Selección Inteligente y Maduración Trimestral")
     st.write("El bot filtra la lista de **Robótica** exigiendo crecimiento del **20%**, momentum técnico, y aplica un candado de **3 meses**.")
 
-    # Verificación visual del estado del mercado
     mercado_activo = comprobar_mercado_abierto()
     if mercado_activo:
         st.success("🟢 MERCADO ABIERTO: Las operaciones simuladas se ejecutarán con precios e impacto en vivo.")
     else:
         st.warning("🕒 MERCADO CERRADO (Wall Street): El bot analizará el mercado pero las órdenes quedarán bloqueadas hasta la apertura.")
 
-    # --- CONTROLES DE GESTIÓN DE RIESGO ---
     st.write("#### 🛡️ Reglas de Gestión Monetaria")
     col_r1, col_r2 = st.columns(2)
     with col_r1:
@@ -82,7 +77,6 @@ with pestaña1:
         gasto_semanal_actual = 0.0
         candidatas_finalistas = []
 
-        # Descarga rápida en bloque
         tickers_string = " ".join(lista_tickers)
         try:
             datos_globales = yf.download(tickers_string, period="60d", group_by="ticker", progress=False)
@@ -102,15 +96,11 @@ with pestaña1:
                     media_30 = historial['Close'].iloc[-30:].mean()
                     precio_hace_60d = historial['Close'].iloc[0]
                     
-                    # 1. FILTRO TÉCNICO
                     if precio_actual >= (media_30 * 0.98):
-                        
-                        # 2. FILTRO FUNDAMENTAL ESTIMADO (Mínimo 20%)
                         crecimiento_precio = ((precio_actual - precio_hace_60d) / precio_hace_60d) * 100
                         crecimiento_porcentaje = max(22.5, round(crecimiento_precio, 1))
 
                         if crecimiento_porcentaje >= 20.0:
-                            # 3. EVALUACIÓN DE POTENCIAL
                             target_estimado = precio_actual * 1.28
                             potencial_4a = ((target_estimado - precio_actual) / precio_actual) * 100
                             
@@ -124,8 +114,6 @@ with pestaña1:
                 pass
 
         posiciones_compradas = []
-        
-        # CRÍTICO: SOLO ejecuta y altera el saldo si el mercado está ABIERTO
         if candidatas_finalistas and mercado_on:
             df_ordenado = pd.DataFrame(candidatas_finalistas)
             df_ordenado = df_ordenado.sort_values(by="Potencial 4A Real", ascending=False)
@@ -157,14 +145,12 @@ with pestaña1:
 
         return pd.DataFrame(posiciones_compradas), caja_total_estrategia, gasto_semanal_actual
 
-    # Ejecutar el algoritmo analítico pasándole el estado del reloj
     df_cartera_inteligente, caja_libre, gastado_semana = motor_bot_inteligente(
         listas_guardadas["Robótica"], max_por_accion, tope_semanal, mercado_activo
     )
     
     total_invertido_hoy = 30000.0 - caja_libre
 
-    # --- CUADRO DE MANDO DE MÉTRICAS GENERALES ---
     st.write("---")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Fondo de Inversión Inicial", "30.000,00 €")
@@ -173,7 +159,6 @@ with pestaña1:
     c4.metric("Gasto Semanal vs Tope", f"{gastado_semana:,.2f} € / {tope_semanal:,.2f} €")
 
     st.write("### 📊 Cartera Generada de Forma Inteligente (Ordenada por Mayor Potencial)")
-    
     if mercado_activo:
         if not df_cartera_inteligente.empty:
             st.dataframe(df_cartera_inteligente, use_container_width=True)
@@ -181,15 +166,15 @@ with pestaña1:
         else:
             st.info("Ningún activo de la lista cumple los filtros ahora mismo.")
     else:
-        # Mensaje de canalización si el usuario ejecuta el sistema fuera de hora
         st.info("🛒 Sistema Canalizado: El radar ha preseleccionado los activos con éxito, pero las órdenes de compra están retenidas en cola. Ejecuta el bot de Lunes a Viernes de 15:30 a 22:00 (Hora España) para procesar las compras.")
 
 # =========================================================
-# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO
+# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO (RESTAURADA)
 # =========================================================
 with pestaña2:
     st.subheader("🔍 Buscador de Acciones con Gráficos de Tendencia")
-    st.write("### 📁 Cargar una Lista de Seguimiento Completa")
+    
+    st.write("### 📁 Opción A: Cargar una Lista de Seguimiento Completa")
     lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", ["Ninguna"] + list(listas_guardadas.keys()))
     
     if lista_sel != "Ninguna":
@@ -230,6 +215,40 @@ with pestaña2:
                 
         if datos_lista:
             st.dataframe(pd.DataFrame(datos_lista), use_container_width=True)
+
+    st.write("---")
+    # --- AQUÍ ESTÁ LA PARTE RESTAURADA ---
+    st.write("### 🔍 Opción B: Ficha de Inteligencia Individual Detallada")
+    accion = st.text_input("Introduce el Ticker de una acción para analizar en individual (Ej: COHR, NVDA, TSLA):", "COHR")
+    
+    if accion:
+        accion = accion.upper()
+        try:
+            ticker_obj = yf.Ticker(accion)
+            datos_hist = ticker_obj.history(period="30d")
+            
+            if not datos_hist.empty:
+                p_actual_ind = datos_hist['Close'].iloc[-1]
+                p_media_ind = datos_hist['Close'].mean()
+                
+                # Cálculo de semáforo individual rápido
+                if p_actual_ind > p_media_ind:
+                    estado_ind = "🟢 ALCISTA (Por encima de su media)"
+                else:
+                    estado_ind = "🔴 COLA DE PRECIO (Por debajo de su media)"
+                
+                # Mostrar métricas del activo individual
+                col_i1, col_i2 = st.columns(2)
+                col_i1.metric(f"Precio Actual de {accion}", f"{p_actual_ind:.2f} €")
+                col_i2.metric("Diagnóstico de Tendencia", estado_ind)
+                
+                # Dibujar gráfico
+                st.write(f"**📉 Evolución de Precio de {accion} (Últimos 30 días)**")
+                st.line_chart(datos_hist['Close'])
+            else:
+                st.error("No se han encontrado datos para ese Ticker. Asegúrate de escribirlo correctamente.")
+        except:
+            st.error("Error al conectar con los servidores de bolsa o Ticker inválido.")
 
 # =========================================================
 # PESTAÑA 3: CONFIGURACIÓN DE LISTAS PREGRABADAS
