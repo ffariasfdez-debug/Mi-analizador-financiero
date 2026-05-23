@@ -166,12 +166,12 @@ with pestaña1:
         st.info("🛒 Sistema Canalizado: El radar ha preseleccionado los activos con éxito, pero las órdenes de compra están retenidas en cola. Ejecuta el bot de Lunes a Viernes de 15:30 a 22:00 (Hora España) para procesar las compras.")
 
 # =========================================================
-# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO (RESTAURADA CON EXPERT METRICS)
+# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO (REDISENO PREMIUM VISUAL)
 # =========================================================
 with pestaña2:
-    st.subheader("🔍 Buscador de Acciones con Gráficos de Tendencia")
+    st.subheader("🔍 Analizador Técnico y Avanzado de Tendencias")
     
-    st.write("### 📁 Opción A: Cargar una Lista de Seguimiento Completa")
+    st.write("### 📁 Opción A: Proyectar Listas Completas con Métricas de Riesgo")
     lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", ["Ninguna"] + list(listas_guardadas.keys()))
     
     if lista_sel != "Ninguna":
@@ -181,42 +181,40 @@ with pestaña2:
         for tick in tickers_lista:
             try:
                 t = yf.Ticker(tick)
-                h = t.history(period="30d")
+                h = t.history(period="60d")
                 if not h.empty:
                     p_actual = h['Close'].iloc[-1]
                     p_media = h['Close'].mean()
                     p_minimo = h['Close'].min()
                     
                     try:
-                        target_val = t.info.get('targetMedianPrice', p_actual * 1.25)
-                        if target_val is None: target_val = p_actual * 1.25
+                        target_val = t.info.get('targetMedianPrice')
+                        if target_val is None or target_val == 0: target_val = p_actual * 1.25
                     except:
                         target_val = p_actual * 1.25
                         
                     potencial_val = ((target_val - p_actual) / p_actual) * 100
-                    
-                    # Cálculo del Ratio Riesgo/Beneficio
                     riesgo_suelo = max(0.5, ((p_actual - p_minimo) / p_actual) * 100)
                     ratio_rb = potencial_val / riesgo_suelo
                     
                     if p_actual > p_media and potencial_val >= 20.0:
                         sem_lista = "🟢 COMPRAR"
-                        explicacion = "Excelente momentum alcista por encima de su media y un potencial subestimado a largo plazo."
+                        explicacion = "Tendencia alcista clara y margen de seguridad óptimo analista."
                     elif potencial_val >= 15.0:
                         sem_lista = "🟡 ACUMULAR"
-                        explicacion = "Valor sólido en zona lateral. Buen ratio de acumulación antes del siguiente impulso."
+                        explicacion = "Consolidando soportes históricos. Atractivo para medio plazo."
                     else:
                         sem_lista = "🔴 ESPERAR"
-                        explicacion = "El precio está muy cerca de su objetivo analista. El margen de seguridad actual es bajo."
+                        explicacion = "Precio ajustado a su valoración actual. Sin margen de seguridad claro."
                         
                     datos_lista.append({
                         "Ticker": tick, 
                         "Precio Actual": f"{p_actual:.2f} €", 
                         "Precio Objetivo": f"{target_val:.2f} €",
-                        "Potencial 4A": f"{potencial_val:.1f}%",
-                        "Riesgo/Beneficio": f"1 : {ratio_rb:.1f}",
+                        "Potencial Estimado": f"{potencial_val:.1f}%",
+                        "Ratio R:B": f"1 : {ratio_rb:.1f}",
                         "Estrategia": sem_lista,
-                        "Fundamento Técnico": explicacion
+                        "Nota Técnica": explicacion
                     })
             except:
                 pass
@@ -225,23 +223,29 @@ with pestaña2:
             st.dataframe(pd.DataFrame(datos_lista), use_container_width=True)
 
     st.write("---")
-    st.write("### 🔍 Opción B: Ficha de Inteligencia Individual Detallada")
-    accion = st.text_input("Introduce el Ticker de una acción para analizar en individual (Ej: ISRG, ROK, DE):", "ISRG")
+    st.write("### 🔍 Opción B: Ficha de Inteligencia Estructural Individual")
+    accion = st.text_input("Introduce el Ticker de una acción (Ej: ISRG, ROK, DE):", "ISRG")
     
     if accion:
         accion = accion.upper()
         try:
             ticker_obj = yf.Ticker(accion)
-            datos_hist = ticker_obj.history(period="30d")
+            # Descargamos 1 año completo de historial para poder calcular las medias importantes
+            datos_hist = ticker_obj.history(period="1y")
             
-            if not datos_hist.empty:
+            if not datos_hist.empty and len(datos_hist) >= 200:
+                # Cálculo de curvas técnicas reales de bolsa
+                datos_hist['Media 50D (Medio Plazo)'] = datos_hist['Close'].rolling(window=50).mean()
+                datos_hist['Media 200D (Institucional)'] = datos_hist['Close'].rolling(window=200).mean()
+                
                 p_actual_ind = datos_hist['Close'].iloc[-1]
-                p_media_ind = datos_hist['Close'].mean()
-                p_min_ind = datos_hist['Close'].min()
+                p_media_50 = datos_hist['Media 50D (Medio Plazo)'].iloc[-1]
+                p_media_200 = datos_hist['Media 200D (Institucional)'].iloc[-1]
+                p_min_ind = datos_hist['Close'].iloc[-50:].min() # Suelo técnico últimas semanas
                 
                 try:
-                    target_ind = ticker_obj.info.get('targetMedianPrice', p_actual_ind * 1.25)
-                    if target_ind is None: target_ind = p_actual_ind * 1.25
+                    target_ind = ticker_obj.info.get('targetMedianPrice')
+                    if target_ind is None or target_ind == 0: target_ind = p_actual_ind * 1.25
                 except:
                     target_ind = p_actual_ind * 1.25
                 
@@ -249,32 +253,41 @@ with pestaña2:
                 riesgo_ind = max(0.5, ((p_actual_ind - p_min_ind) / p_actual_ind) * 100)
                 ratio_rb_ind = potencial_ind / riesgo_ind
                 
-                # Definición de Diagnóstico y Explicación Crítica
-                if p_actual_ind > p_media_ind:
-                    estado_ind = "🟢 ALCISTA (Por encima de su media)"
-                    if ratio_rb_ind >= 2.0:
-                        explicacion_ind = f"El activo {accion} muestra una estructura de mínimos crecientes muy robusta. El Ratio Riesgo/Beneficio es muy favorable (1:{ratio_rb_ind:.1f}), lo que indica que el potencial de subida duplica holgadamente el riesgo de caída al soporte de seguridad de los últimos 30 días."
+                # Evaluación algorítmica estructurada
+                if p_actual_ind > p_media_200:
+                    estado_ind = "🟢 ESTRUCTURA ALCISTA PRINCIPAL"
+                    if p_actual_ind > p_media_50:
+                        diagnostico_txt = "COMPRAR (Confirmación de Tendencia)"
+                        explicacion_ind = f"El activo cotiza con fuerza por encima de sus dos medias móviles principales (50 y 200 días). Esto indica un momentum institucional impecable. Con un Ratio Riesgo/Beneficio de 1:{ratio_rb_ind:.1f}, la recompensa justifica con creces el riesgo estructural."
                     else:
-                        explicacion_ind = f"Aunque {accion} está en tendencia alcista, el precio ha subido con fuerza recientemente, reduciendo el Ratio Riesgo/Beneficio a un ajuste de (1:{ratio_rb_ind:.1f}). Es apto para mantener, pero con precaución para nuevas entradas."
+                        diagnostico_txt = "ACUMULAR (Retroceso Técnico)"
+                        explicacion_ind = f"El activo mantiene su tendencia alcista principal a largo plazo (sobre la media de 200 días), pero ha corregido a corto plazo por debajo de la de 50 días. Es una zona óptima de compra selectiva o acumulación."
                 else:
-                    estado_ind = "🔴 COLA DE PRECIO (Por debajo de su media)"
-                    explicacion_ind = f"El activo se encuentra en fase de corrección técnica o consolidación por debajo de la media de 30 días. Se recomienda paciencia hasta ver un patrón de giro, a pesar de que el precio objetivo ofrece un recorrido teórico del {potencial_ind:.1f}%."
+                    estado_ind = "🔴 TENDENCIA BAJISTA / BAJO MOMENTUM"
+                    diagnostico_txt = "ESPERAR (Falta de Fuerza)"
+                    explicacion_ind = f"El precio cotiza por debajo de la media institucional de 200 días. El entorno técnico es complejo y, aunque las proyecciones teóricas den un {potencial_ind:.1f}% de recorrido, el mercado carece de apoyo comprador. Conviene esperar un suelo firme."
                 
-                # Despliegue visual en columnas
-                col_i1, col_i2, col_i3 = st.columns(3)
-                col_i1.metric(f"Precio Actual de {accion}", f"{p_actual_ind:.2f} €")
-                col_i2.metric("Diagnóstico de Tendencia", estado_ind)
-                col_i3.metric("Ratio Riesgo / Beneficio", f"1 : {ratio_rb_ind:.1f}")
+                # --- DISEÑO EN TARJETAS DE DATOS ---
+                st.write("#### 📊 Métricas Clave de Decisión")
+                c_i1, c_i2, c_i3, c_i4 = st.columns(4)
+                c_i1.metric("Precio de Mercado", f"{p_actual_ind:.2f} €")
+                c_i2.metric("Salud de Fondo", estado_ind)
+                c_i3.metric("Ratio Riesgo / Beneficio", f"1 : {ratio_rb_ind:.1f}")
+                c_i4.metric("Estrategia Recomendada", diagnostico_txt)
                 
-                # Caja informativa de fundamentación analítica
-                st.info(f"📋 **Análisis y Justificación del Bot:** {explicacion_ind}")
+                # Caja de fundamentación explicativa estilizada
+                st.info(f"💡 **Justificación del Sistema:** {explicacion_ind}")
                 
-                st.write(f"**📉 Evolución de Precio de {accion} (Últimos 30 días)**")
-                st.line_chart(datos_hist['Close'])
+                # --- GRÁFICO AVANZADO CON LAS 2 MEDIAS ---
+                st.write(f"**📉 Gráfico de Evolución Estructural de {accion} (Último Año)**")
+                # Creamos un dataframe limpio solo con los datos que queremos pintar en la gráfica
+                df_grafico = datos_hist[['Close', 'Media 50D (Medio Plazo)', 'Media 200D (Institucional)']]
+                df_grafico.columns = ['Precio de Cierre', 'Media Móvil 50 días', 'Media Móvil 200 días (Estructural)']
+                st.line_chart(df_grafico)
             else:
-                st.error("No se han encontrado datos para ese Ticker. Asegúrate de escribirlo correctamente.")
-        except:
-            st.error("Error al conectar con los servidores de bolsa o Ticker inválido.")
+                st.error("No hay suficiente historial acumulado en Yahoo Finance para trazar la media institucional de 200 días de este activo.")
+        except Exception as e:
+            st.error(f"Error al conectar con los servidores o procesar el Ticker: {str(e)}")
 
 # =========================================================
 # PESTAÑA 3: CONFIGURACIÓN DE LISTAS PREGRABADAS
