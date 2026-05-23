@@ -4,7 +4,7 @@ import yfinance as yf
 from datetime import datetime, timedelta
 import pytz
 
-# 1. Configuración inicial de la plataforma (Obligatorio en la primera línea)
+# 1. Configuración inicial de la plataforma
 st.set_page_config(page_title="Centro de Mando Financiero", layout="wide")
 
 # --- TITULO PRINCIPAL ---
@@ -12,24 +12,25 @@ st.title("🎛️ Centro de Mando Financiero Pro")
 st.write(f"**Estado del Sistema:** Conectado en Vivo | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 st.write("---")
 
+# --- CONTROL DE MEMORIA PARA LAS LISTAS (Sincronización total) ---
+if "listas" not in st.session_state:
+    st.session_state.listas = {
+        "Semiconductores Premium": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML"],
+        "Robótica Pura": [
+            "ISRG", "ZBH", "STE", "ROK", "CGNX", "TER", 
+            "ATS", "SYM", "GWW", "AME", "ADI", "FTV", "KEYS", "PTC", 
+            "ANSS", "ROCK", "COHR", "DE", "CAT", "AVAV", "GE", "HON"
+        ],
+        "Fotónica": ["IPGP", "LITE", "COHR"],
+        "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR"]
+    }
+
 # --- MENÚ DE PESTAÑAS PRINCIPALES ---
 pestaña1, pestaña2, pestaña3 = st.tabs([
     "🤖 Bot Masivo Automático 30k", 
     "🔍 Analizador Técnico Avanzado", 
-    "⚙️ Configuración de Listas Pregrabadas"
+    "⚙️ Panel de Gestión de Listas Inteligentes"
 ])
-
-# Base de datos optimizada para máxima velocidad en Yahoo Finance (Robótica Pura)
-listas_guardadas = {
-    "Semiconductores Premium": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML"],
-    "Robótica Pura": [
-        "ISRG", "ZBH", "STE", "ROK", "CGNX", "TER", 
-        "ATS", "SYM", "GWW", "AME", "ADI", "FTV", "KEYS", "PTC", 
-        "ANSS", "ROCK", "COHR", "DE", "CAT", "AVAV", "GE", "HON"
-    ],
-    "Fotónica": ["IPGP", "LITE", "COHR"],
-    "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR"]
-}
 
 # --- FUNCIÓN AUXILIAR: COMPROBAR HORARIO DE WALL STREET ---
 def comprobar_mercado_abierto():
@@ -142,8 +143,9 @@ with pestaña1:
 
         return pd.DataFrame(posiciones_compradas), caja_total_estrategia, gasto_semanal_actual
 
+    # El bot consume la lista en memoria activa
     df_cartera_inteligente, caja_libre, gastado_semana = motor_bot_inteligente(
-        listas_guardadas["Robótica Pura"], max_por_accion, tope_semanal, mercado_activo
+        st.session_state.listas["Robótica Pura"], max_por_accion, tope_semanal, mercado_activo
     )
     
     total_invertido_hoy = 30000.0 - caja_libre
@@ -172,10 +174,10 @@ with pestaña2:
     st.subheader("🔍 Buscador de Acciones con Gráficos de Tendencia")
     
     st.write("### 📁 Opción A: Cargar una Lista de Seguimiento Completa")
-    lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", ["Ninguna"] + list(listas_guardadas.keys()))
+    lista_sel = st.selectbox("Selecciona una lista para proyectar:", ["Ninguna"] + list(st.session_state.listas.keys()))
     
     if lista_sel != "Ninguna":
-        tickers_lista = listas_guardadas[lista_sel]
+        tickers_lista = st.session_state.listas[lista_sel]
         datos_lista = []
         
         for tick in tickers_lista:
@@ -215,7 +217,7 @@ with pestaña2:
 
     st.write("---")
     st.write("### 🔍 Opción B: Ficha de Inteligencia Individual Detallada")
-    accion = st.text_input("Introduce el Ticker de una acción para analizar en individual (Ej: ISRG, ROK, DE):", "ISRG")
+    accion = st.text_input("Introduce el Ticker de una acción para analizar en individual:", "ISRG")
     
     if accion:
         accion = accion.upper()
@@ -239,23 +241,59 @@ with pestaña2:
                 st.write(f"**📉 Evolución de Precio de {accion} (Últimos 30 días)**")
                 st.line_chart(datos_hist['Close'])
             else:
-                st.error("No se han encontrado datos para ese Ticker. Asegúrate de escribirlo correctamente.")
+                st.error("No se han encontrado datos para ese Ticker.")
         except:
-            st.error("Error al conectar con los servidores de bolsa o Ticker inválido.")
+            st.error("Error al conectar con los servidores de bolsa.")
 
 # =========================================================
-# PESTAÑA 3: CONFIGURACIÓN DE LISTAS PREGRABADAS
+# PESTAÑA 3: PANEL DE GESTIÓN DE LISTAS (ACTUALIZADA)
 # =========================================================
 with pestaña3:
-    st.subheader("⚙️ Panel de Control y Consulta de Listas Pregrabadas")
-    st.write("Aquí puedes supervisar los tickers que componen las bases de datos internas de tu algoritmo.")
+    st.subheader("⚙️ Editor Maestro de Listas de Inversión")
+    st.write("Añade, elimina tickers o crea listas personalizadas desde este panel interactivo sin tocar el código.")
     
-    lista_a_revisar = st.selectbox("Selecciona una lista para ver sus componentes:", list(listas_guardadas.keys()))
+    col_pest1, col_pest2 = st.columns([1, 2])
     
-    if lista_a_revisar:
-        tickers_en_lista = listas_guardadas[lista_a_revisar]
+    with col_pest1:
+        st.write("#### 🆕 Operación 1: Crear Nueva Lista")
+        nueva_lista_nombre = st.text_input("Nombre de la nueva lista (Ej: Favoritos, SmallCaps):", "")
+        if st.button("➕ Crear Lista Vacía"):
+            if nueva_lista_nombre and nueva_lista_nombre not in st.session_state.listas:
+                st.session_state.listas[nueva_lista_nombre] = []
+                st.success(f"Lista '{nueva_lista_nombre}' creada.")
+                st.rerun()
+            elif nueva_lista_nombre in st.session_state.listas:
+                st.warning("Esa lista ya existe.")
+
+        st.write("---")
+        st.write("#### ✏️ Operación 2: Modificar Lista Seleccionada")
+        lista_a_modificar = st.selectbox("Selecciona la lista que deseas editar:", list(st.session_state.listas.keys()))
         
-        st.info(f"📋 La lista **{lista_a_revisar}** contiene actualmente **{len(tickers_en_lista)}** activos configurados.")
-        
-        df_tickers = pd.DataFrame(tickers_en_lista, columns=["Ticker Oficial (Yahoo Finance)"])
-        st.dataframe(df_tickers, use_container_width=True)
+        if lista_a_modificar:
+            # Añadir Ticker
+            nuevo_ticker = st.text_input("Introduce Ticker para AÑADIR (Ej: SYM, IRBT):", "").upper().strip()
+            if st.button("📥 Insertar Ticker"):
+                if nuevo_ticker and nuevo_ticker not in st.session_state.listas[lista_a_modificar]:
+                    st.session_state.listas[lista_a_modificar].append(nuevo_ticker)
+                    st.success(f"{nuevo_ticker} añadido a {lista_a_modificar}")
+                    st.rerun()
+            
+            # Eliminar Ticker
+            if st.session_state.listas[lista_a_modificar]:
+                ticker_a_borrar = st.selectbox("Selecciona un Ticker para ELIMINAR:", st.session_state.listas[lista_a_modificar])
+                if st.button("🗑️ Quitar Ticker"):
+                    st.session_state.listas[lista_a_modificar].remove(ticker_a_borrar)
+                    st.success(f"{ticker_a_borrar} eliminado de {lista_a_modificar}")
+                    st.rerun()
+            else:
+                st.info("Esta lista está vacía.")
+
+    with col_pest2:
+        st.write("#### 📋 Visor de Componentes Activos")
+        if lista_a_modificar:
+            tickers_actuales = st.session_state.listas[lista_a_modificar]
+            st.info(f"La lista **{lista_a_modificar}** tiene actualmente **{len(tickers_actuales)}** activos guardados en la base de datos.")
+            
+            if tickers_actuales:
+                df_visualizacion = pd.DataFrame(tickers_actuales, columns=["Ticker Oficial"])
+                st.dataframe(df_visualizacion, use_container_width=True)
