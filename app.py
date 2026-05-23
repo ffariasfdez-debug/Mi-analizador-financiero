@@ -20,7 +20,7 @@ pestaña1, pestaña2, pestaña3 = st.tabs([
 ])
 
 # Inicializar las listas en el estado de la sesión para que las modificaciones no se borren al hacer clic
-if "listas_guardadas" Hollywood not in st.session_state:
+if "listas_guardadas" not in st.session_state:
     st.session_state.listas_guardadas = {
         "Semiconductores Premium": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML"],
         "Robótica Pura": [
@@ -94,39 +94,4 @@ with pestaña1:
                     media_30 = historial['Close'].iloc[-30:].mean()
                     precio_hace_60d = historial['Close'].iloc[0]
                     
-                    if precio_actual >= (media_30 * 0.98):
-                        crecimiento_precio = ((precio_actual - precio_hace_60d) / precio_hace_60d) * 100
-                        crecimiento_porcentaje = max(22.5, round(crecimiento_precio, 1))
-
-                        if crecimiento_porcentaje >= 20.0:
-                            target_estimado = precio_actual * 1.28
-                            potencial_4a = ((target_estimado - precio_actual) / precio_actual) * 100
-                            
-                            candidatas_finalistas.append({
-                                "Ticker": tick,
-                                "Precio Actual": precio_actual,
-                                "Crecimiento Anual": crecimiento_porcentaje,
-                                "Potencial 4A Real": potencial_4a
-                            })
-            except:
-                pass
-
-        posiciones_compradas = []
-        if candidatas_finalistas and mercado_on:
-            df_ordenado = pd.DataFrame(candidatas_finalistas)
-            df_ordenado = df_ordenado.sort_values(by="Potencial 4A Real", ascending=False)
-            
-            for _, fila in df_ordenado.iterrows():
-                if caja_total_estrategia < inversion_bloque:
-                    break
-                if (gasto_semanal_actual + inversion_bloque) > limite_semana:
-                    break
-                
-                caja_total_estrategia -= inversion_bloque
-                gasto_semanal_actual += inversion_bloque
-                
-                fecha_compra = datetime.now().strftime('%d/%m/%Y')
-                fecha_liberacion = (datetime.now() + timedelta(days=90)).strftime('%d/%m/%Y')
-                cantidad_acciones = round(inversion_bloque / fila["Precio Actual"], 4)
-                
-                posiciones_com
+                    if precio_actual >=
