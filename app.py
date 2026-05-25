@@ -153,7 +153,7 @@ with pestaña1:
                     cupo_alcanzado = True
                     break
                 # Verificar límites de capital
-                if caja_total_estrategia < inversion_bloque:
+                if caja_total_estragia < inversion_bloque:
                     break
                 if (gasto_semanal_actual + inversion_bloque) > limite_semana:
                     break
@@ -189,18 +189,3 @@ with pestaña1:
 
     st.write("---")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Fondo de Inversión Inicial", "30.000,00 €")
-    c2.metric("Asignado por Inteligencia", f"{total_invertido_hoy:,.2f} €")
-    c3.metric("Caja Líquida Disponible", f"{caja_libre:,.2f} €")
-    c4.metric("Gasto Semanal vs Tope", f"{gastado_semana:,.2f} € / {tope_semanal:,.2f} €")
-
-    if alerta_cupo:
-        st.warning(f"⚠️ **Aviso de Control:** Se ha detenido la compra automática porque se alcanzó el cupo máximo de {max_activos_cartera} acciones seleccionadas simultáneamente.")
-
-    st.write("### 📊 Cartera Generada con Filtro de Tendencia y Volumen Institucional")
-    if mercado_activo:
-        if not df_cartera_inteligente.empty:
-            st.dataframe(df_cartera_inteligente, use_container_width=True)
-            st.success("💡 Las posiciones mostradas cumplen el protocolo institucional completo y entran en bloqueo trimestral.")
-        else:
-            st.info("Ningún activo de la lista cumple los filtros instit
