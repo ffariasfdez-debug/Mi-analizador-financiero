@@ -118,7 +118,7 @@ with pestaña1:
                             if crecimiento_porcentaje >= 20.0:
                                 # Conectar con datos de analistas para potencial dinámico
                                 try:
-                                # TRAER DATOS EN VIVO REALES DE YAHOO O PROYECTAR DINÁMICAMENTE
+                                    # TRAER DATOS EN VIVO REALES DE YAHOO O PROYECTAR DINÁMICAMENTE
                                 try:
                                     t_info = yf.Ticker(tick).info
                                     target_estimado = t_info.get('targetMedianPrice')
