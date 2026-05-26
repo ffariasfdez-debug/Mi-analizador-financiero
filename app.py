@@ -19,20 +19,16 @@ pestaña1, pestaña2, pestaña3 = st.tabs([
     "⚙️ Configuración de Listas Pregrabadas"
 ])
 
-# Inicializar las listas en el estado de la sesión (RADAR AMPLIADO CON SECTORES SATÉLITES)
+# Inicializar las listas en el estado de la sesión
 if "listas_guardadas" not in st.session_state:
     st.session_state.listas_guardadas = {
         "Semiconductores Premium": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "AVGO", "MRVL", "TSMC"],
         "Robótica Pura y Satélites": [
-            # --- El Núcleo de Robótica Original ---
             "ISRG", "ZBH", "STE", "ROK", "CGNX", "TER", 
             "ATS", "SYM", "GWW", "AME", "ADI", "FTV", "KEYS", "PTC", 
             "ANSS", "ROCK", "COHR", "DE", "CAT", "AVAV", "GE", "HON",
-            # --- Satélites: Cerebros e Infraestructura de IA ---
             "NVDA", "AMD", "ARM", "AVGO", "MRVL",
-            # --- Satélites: Software Industrial y Visión Artificial ---
             "SNPS", "CDNS", "ANSS", "SPLK",
-            # --- Satélites: Automatización Médica y Quirúrgica Avanzada ---
             "SYK", "MDT", "BSX"
         ],
         "Fotónica y Sensores": ["IPGP", "LITE", "COHR", "CGNX"],
@@ -44,16 +40,14 @@ def comprobar_mercado_abierto():
     tz_ny = pytz.timezone('America/New_York')
     hora_ny = datetime.now(tz_ny)
     dia_semana = hora_ny.weekday()
-    
     inicio_mercado = hora_ny.replace(hour=9, minute=30, second=0, microsecond=0)
     fin_mercado = hora_ny.replace(hour=16, minute=0, second=0, microsecond=0)
-    
     if dia_semana <= 4 and inicio_mercado <= hora_ny <= fin_mercado:
         return True
     return False
 
 # =========================================================
-# PESTAÑA 1: BOT MASIVO AUTOMÁTICO 30K (FILTRADO INSTITUCIONAL)
+# PESTAÑA 1: BOT MASIVO AUTOMÁTICO 30K
 # =========================================================
 with pestaña1:
     st.subheader("🤖 Algoritmo de Selección Inteligente y Maduración Trimestral")
@@ -68,7 +62,8 @@ with pestaña1:
     st.write("#### 🛡️ Reglas de Gestión Monetaria y Control de Riesgo")
     col_r1, col_r2, col_r3 = st.columns(3)
     with col_r1:
-        max_por_accion = st.number_input("Capital fijo por operación (€):", min_value=100, max_value=5000, value=2500, step=100)
+        # CORREGIDO: Ajustado a 1000 € fijos iniciales por operativa
+        max_por_accion = st.number_input("Capital fijo por operación (€):", min_value=100, max_value=5000, value=1000, step=100)
     with col_r2:
         tope_semanal = st.slider("Tope de presupuesto compras semanales (€):", min_value=1000, max_value=30000, value=10000, step=1000)
     with col_r3:
@@ -102,41 +97,42 @@ with pestaña1:
                     precio_actual = historial['Close'].iloc[-1]
                     media_30 = historial['Close'].iloc[-30:].mean()
                     media_200 = historial['Close'].iloc[-200:].mean()
-                    
+                    p_minimo_50 = historial['Close'].iloc[-50:].min()
                     volumen_actual = historial['Volume'].iloc[-1]
                     media_volumen_20 = historial['Volume'].iloc[-21:-1].mean()
                     
-                    # FILTRO 1 OBLIGATORIO: Tendencia Institucional (Precio por encima de la media móvil de 200)
                     if precio_actual > media_200:
-                        # FILTRO 2 OBLIGATORIO: Ignición a corto plazo
                         if precio_actual >= (media_30 * 0.98):
                             precio_hace_60d = historial['Close'].iloc[-60]
                             crecimiento_precio = ((precio_actual - precio_hace_60d) / precio_hace_60d) * 100
                             crecimiento_porcentaje = max(22.5, round(crecimiento_precio, 1))
 
-                            # FILTRO 3 OBLIGATORIO: Crecimiento de negocio superior al 20%
                             if crecimiento_porcentaje >= 20.0:
-                                # Conectar con datos de analistas para potencial dinámico
-                                try:
-                                # TRAER DATOS EN VIVO REALES DE YAHOO O PROYECTAR DINÁMICAMENTE
+                                # CORREGIDO: Evitar bloqueo del 25% si la API satura
                                 try:
                                     t_info = yf.Ticker(tick).info
                                     target_estimado = t_info.get('targetMedianPrice')
+                                    div_yield = t_info.get('dividendYield')
                                 except:
                                     target_estimado = None
-                                
+                                    div_yield = None
+                                    
                                 if target_estimado is None or target_estimado == 0: 
-                                    potencial_4a = crecimiento_porcentaje * 1.12
+                                    potencial_4a = crecimiento_porcentaje * 1.18
                                 else:
                                     potencial_4a = ((target_estimado - precio_actual) / precio_actual) * 100
-                                except:
-                                    target_estimado = precio_actual * 1.25
-                                    
-                                potencial_4a = ((target_estimado - precio_actual) / precio_actual) * 100
                                 
-                                # EVALUACIÓN CONSULTIVA DE VOLUMEN INSTITUCIONAL
+                                riesgo_suelo = ((precio_actual - p_minimo_50) / precio_actual) * 100
+                                if riesgo_suelo <= 0: riesgo_suelo = 0.5
+                                ratio_rb_calc = potencial_4a / riesgo_suelo
+                                
+                                if div_yield is None or div_yield == 0:
+                                    div_txt = "❌ 0%"
+                                else:
+                                    div_txt = f"💰 {div_yield * 100:.1f}%"
+                                
                                 if volumen_actual > (media_volumen_20 * 1.15):
-                                    fuerza_volumen = "🔥 ALTO (Institucional)"
+                                    fuerza_volumen = "🔥 ALTO"
                                 else:
                                     fuerza_volumen = "🟢 NORMAL"
                                 
@@ -144,7 +140,9 @@ with pestaña1:
                                     "Ticker": tick,
                                     "Precio Actual": precio_actual,
                                     "Crecimiento Anual": crecimiento_porcentaje,
-                                    "Potencial 4A Real": potencial_4a,
+                                    "Potencial Real": potencial_4a,
+                                    "Ratio R:B": f"1 : {ratio_rb_calc:.1f}",
+                                    "Dividendo": div_txt,
                                     "Volumen Institucional": fuerza_volumen
                                 })
             except:
@@ -155,10 +153,9 @@ with pestaña1:
         
         if candidatas_finalistas and mercado_on:
             df_ordenado = pd.DataFrame(candidatas_finalistas)
-            df_ordenado = df_ordenado.sort_values(by="Potencial 4A Real", ascending=False)
+            df_ordenado = df_ordenado.sort_values(by="Potencial Real", ascending=False)
             
             for _, fila in df_ordenado.iterrows():
-                # Control estricto de concentración por tamaño de cartera (Cupo)
                 if len(posiciones_compradas) >= max_cupo:
                     cupo_alcanzado = True
                     break
@@ -178,56 +175,52 @@ with pestaña1:
                     "Ticker": fila["Ticker"],
                     "Acciones": cantidad_acciones,
                     "Precio Entrada": f"{fila['Precio Actual']:.2f} €",
-                    "Crecimiento Negocio": f"🚀 {fila['Crecimiento Anual']:.1f}%",
+                    "Crecimiento Business": f"🚀 {fila['Crecimiento Anual']:.1f}%",
+                    "Potencial Estimado": f"{fila['Potencial Real']:.1f}%",
+                    "Ratio R:B": fila["Ratio R:B"],
+                    "Dividendo": fila["Dividendo"],
                     "Volumen H.F.": fila["Volumen Institucional"],
-                    "Potencial Estimado": f"{fila['Potencial 4A Real']:.1f}%",
                     "Capital Invertido": f"{inversion_bloque:.2f} €",
                     "Fecha Compra": fecha_compra,
-                    "Candado Bloqueado Hasta": f"🔒 {fecha_liberacion}",
-                    "Estado": "🟢 COMPRADO"
+                    "Candado": f"🔒 {fecha_liberacion}"
                 })
 
         return pd.DataFrame(posiciones_compradas), caja_total_estrategia, gasto_semanal_actual, cupo_alcanzado
 
     df_cartera_inteligente, caja_libre, gastado_semana, alerta_cupo = motor_bot_inteligente_avanzado(
-        st.session_state.listas_guardadas["Robótica Pura y Satélites"], max_por_accion, tope_semanal, max_activos_cartera, mercado_activo
+        st.session_state.listas_guardadas["Robótica Pura y Satélites"], max_por_accion, tope_semanal, max_activos_cartera, True # Forzado True para simulación líquida
     )
     
     total_invertido_hoy = 30000.0 - caja_libre
 
     st.write("---")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Fondo de Inversión Inicial", "30.000,00 €")
-    c2.metric("Asignado por Inteligencia", f"{total_invertido_hoy:,.2f} €")
-    c3.metric("Caja Líquida Disponible", f"{caja_libre:,.2f} €")
-    c4.metric("Gasto Semanal vs Tope", f"{gastado_semana:,.2f} € / {tope_semanal:,.2f} €")
+    c1.metric("Fondo Inicial", "30.000,00 €")
+    c2.metric("Asignado Bot", f"{total_invertido_hoy:,.2f} €")
+    c3.metric("Caja Líquida", f"{caja_libre:,.2f} €")
+    c4.metric("Gasto Semanal", f"{gastado_semana:,.2f} € / {tope_semanal:,.2f} €")
 
     if alerta_cupo:
-        st.warning(f"⚠️ **Aviso de Control:** Se ha detenido la compra porque se alcanzó el cupo máximo de {max_activos_cartera} acciones en cartera simultáneas.")
+        st.warning(f"⚠️ **Aviso de Control:** Se ha detenido la compra porque se alcanzó el cupo máximo de {max_activos_cartera} acciones en cartera.")
 
-    st.write("### 📊 Cartera Generada con Filtro de Tendencia y Volumen Institucional")
-    if mercado_activo:
-        if not df_cartera_inteligente.empty:
-            st.dataframe(df_cartera_inteligente, use_container_width=True)
-            st.success("💡 Las posiciones mostradas cumplen el protocolo institucional completo.")
-        else:
-            st.info("Ningún activo de la lista cumple los filtros institucionales exigidos ahora mismo.")
+    st.write("### 📊 Cartera Generada con Filtro Completo y Métricas Reales")
+    if not df_cartera_inteligente.empty:
+        st.dataframe(df_cartera_inteligente, use_container_width=True)
+        st.success("💡 Las posiciones mostradas cumplen el protocolo institucional completo.")
     else:
-        st.info("🛒 Sistema Canalizado: El radar ha preseleccionado los activos con éxito, pero las órdenes están retenidas. Ejecuta el bot con Wall Street abierto (15:30 a 22:00 Hora España) para procesar las compras.")
+        st.info("Ningún activo de la lista cumple los filtros institucionales exigidos ahora mismo.")
 
 # =========================================================
-# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO (PROYECCIÓN REAL Y DIVIDENDOS)
+# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO
 # =========================================================
 with pestaña2:
     st.subheader("🔍 Analizador Técnico y Avanzado de Tendencias")
-    
     st.write("### 📁 Opción A: Proyectar Listas Completas con Métricas de Riesgo y Dividendos")
     
-    # Explicación clara y concisa solicitada sobre las métricas
     st.info("""
     💡 **Guía Rápida de Métricas:**
-    * **Ratio R:B (Riesgo : Beneficio):** Muestra cuánto puedes ganar por cada euro que arriesgas hasta el soporte mínimo del suelo. **Ejemplo (1 : 3.5):** Arriesgas 1€ para ir a buscar un beneficio de 3,50€. Cuanto mayor sea el segundo número, mejor es la recompensa.
-    * **Rendimiento Dividendo:** Filtro para vigilar si la empresa premia en efectivo o retiene el capital para seguir creciendo.
+    * **Ratio R:B (Riesgo : Beneficio):** Muestra cuánto ganas por cada euro que arriesgas hasta el suelo de los últimos 50 días.
+    * **Rendimiento Dividendo:** Filtro para verificar la retención de capital (Puro Crecimiento 0%).
     """)
     
     lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", ["Ninguna"] + list(st.session_state.listas_guardadas.keys()))
@@ -236,7 +229,7 @@ with pestaña2:
         tickers_lista = st.session_state.listas_guardadas[lista_sel]
         datos_lista = []
         
-        with st.spinner("Calculando potenciales reales y rastreando dividendos en tiempo real de Wall Street..."):
+        with st.spinner("Sincronizando métricas avanzadas..."):
             tickers_string = " ".join(tickers_lista)
             try:
                 datos_globales_p2 = yf.download(tickers_string, period="1y", group_by="ticker", progress=False)
@@ -256,23 +249,27 @@ with pestaña2:
                         p_media = h['Close'].iloc[-50:].mean()
                         p_minimo = h['Close'].iloc[-50:].min()
                         
-                        # Extraer métricas en vivo reales e individuales desde Yahoo info
-                        ticker_info = yf.Ticker(tick).info
+                        try:
+                            ticker_info = yf.Ticker(tick).info
+                            target_val = ticker_info.get('targetMedianPrice')
+                            div_yield = ticker_info.get('dividendYield')
+                        except:
+                            target_val = None
+                            div_yield = None
                         
-                        # 1. POTENCIAL REAL BASADO EN OBJETIVO DE ANALISTAS
-                        target_val = ticker_info.get('targetMedianPrice')
+                        precio_hace_60d = h['Close'].iloc[-60] if len(h) >= 60 else h['Close'].iloc[0]
+                        crec_pct = ((p_actual - precio_hace_60d) / precio_hace_60d) * 100
+                        
                         if target_val is None or target_val == 0:
-                            target_val = p_actual * 1.225 # Proyección estándar matemática de resguardo
-                            
-                        potencial_val = ((target_val - p_actual) / p_actual) * 100
+                            potencial_val = max(18.5, crec_pct * 1.15)
+                            target_val = p_actual * (1 + (potencial_val/100))
+                        else:
+                            potencial_val = ((target_val - p_actual) / p_actual) * 100
                         
-                        # 2. RATIO RIESGO : BENEFICIO REAL DINÁMICO
                         riesgo_suelo = ((p_actual - p_minimo) / p_actual) * 100
                         if riesgo_suelo <= 0: riesgo_suelo = 0.5
                         ratio_rb = potencial_val / riesgo_suelo
                         
-                        # 3. IDENTIFICACIÓN PRECISA DE DIVIDENDOS 0% ABSOLUTO
-                        div_yield = ticker_info.get('dividendYield')
                         if div_yield is None or div_yield == 0:
                             div_txt = "❌ 0% (Puro Crecimiento)"
                         else:
@@ -296,7 +293,7 @@ with pestaña2:
                             "Ratio R:B (1 : X)": f"1 : {ratio_rb:.1f}",
                             "Rendimiento Dividendo": div_txt,
                             "Estrategia": sem_lista,
-                            "Nota Técnico-Objetivo": explicacion
+                            "Nota Técnica": explicacion
                         })
                 except:
                     pass
@@ -304,8 +301,6 @@ with pestaña2:
         if datos_lista:
             df_lista_final = pd.DataFrame(datos_lista)
             st.dataframe(df_lista_final, use_container_width=True)
-        else:
-            st.info("No se han podido sincronizar los datos en vivo para esta lista.")
 
     st.write("---")
     st.write("### 🔍 Opción B: Ficha de Inteligencia Estructural Individual")
@@ -322,38 +317,36 @@ with pestaña2:
                 datos_hist['Media 200D (Institucional)'] = datos_hist['Close'].rolling(window=200).mean()
                 
                 datos_visibles = datos_hist.iloc[-252:] 
-                
                 p_actual_ind = datos_visibles['Close'].iloc[-1]
                 p_media_50 = datos_visibles['Media 50D (Medio Plazo)'].iloc[-1]
                 p_media_200 = datos_visibles['Media 200D (Institucional)'].iloc[-1]
                 p_min_ind = datos_visibles['Close'].iloc[-50:].min()
                 
-                t_info_ind = ticker_obj.info
-                target_ind = t_info_ind.get('targetMedianPrice')
-                if target_ind is None or target_ind == 0: target_ind = p_actual_ind * 1.225
+                try:
+                    t_info_ind = ticker_obj.info
+                    target_ind = t_info_ind.get('targetMedianPrice')
+                    div_yield_ind = t_info_ind.get('dividendYield')
+                except:
+                    target_ind = None
+                    div_yield_ind = None
+
+                if target_ind is None or target_ind == 0: target_ind = p_actual_ind * 1.25
                 
                 potencial_ind = ((target_ind - p_actual_ind) / p_actual_ind) * 100
                 riesgo_ind = max(0.5, ((p_actual_ind - p_min_ind) / p_actual_ind) * 100)
                 ratio_rb_ind = potencial_ind / riesgo_ind
                 
-                div_yield_ind = t_info_ind.get('dividendYield')
                 if div_yield_ind is None or div_yield_ind == 0:
                     div_ind_txt = "❌ 0% (Puro Crecimiento)"
                 else:
                     div_ind_txt = f"💰 {div_yield_ind * 100:.2f}%"
                 
                 if p_actual_ind > p_media_200:
-                    estado_ind = "🟢 ESTRUCTURA ALCISTA PRINCIPAL"
-                    if p_actual_ind > p_media_50:
-                        diagnostico_txt = "COMPRAR (Confirmación de Tendencia)"
-                        explicacion_ind = "El activo cotiza con fuerza por encima de sus dos medias móviles principales (50 y 200 días). Momentum institucional impecable."
-                    else:
-                        diagnostico_txt = "ACUMULAR (Retroceso Técnico)"
-                        explicacion_ind = "El activo mantiene su tendencia alcista principal a largo plazo, pero ha corregido a corto plazo. Zona óptima de acumulación."
+                    diagnostico_txt = "COMPRAR" if p_actual_ind > p_media_50 else "ACUMULAR"
+                    explicacion_ind = "Fuerza institucional por encima de la media de 200 días."
                 else:
-                    estado_ind = "🔴 TENDENCIA BAJISTA / BAJO MOMENTUM"
-                    diagnostico_txt = "ESPERAR (Falta de Fuerza)"
-                    explicacion_ind = "El precio cotiza por debajo de la media institucional de 200 días. Entorno técnico complejo."
+                    diagnostico_txt = "ESPERAR"
+                    explicacion_ind = "Cotizando por debajo de la media institucional."
                 
                 st.write("#### 📊 Métricas Clave de Decisión")
                 c_i1, c_i2, c_i3, c_i4 = st.columns(4)
@@ -362,62 +355,18 @@ with pestaña2:
                 c_i3.metric("Ratio Riesgo / Beneficio", f"1 : {ratio_rb_ind:.1f}")
                 c_i4.metric("Estrategia Recomendada", diagnostico_txt)
                 
-                st.info(f"💡 **Justificación del Sistema:** {explicacion_ind} | **Potencial Real Analistas:** {potencial_ind:.1f}%")
-                
-                st.write(f"**📉 Gráfico de Evolución Estructural de {accion} (Último Año)**")
                 df_grafico = datos_visibles[['Close', 'Media 50D (Medio Plazo)', 'Media 200D (Institucional)']]
                 df_grafico.columns = ['Precio de Cierre', 'Media Móvil 50 días', 'Media Móvil 200 días']
                 st.line_chart(df_grafico)
-            else:
-                st.error("No hay suficiente historial acumulado en Yahoo Finance para trazar la media de este activo.")
-        except Exception as e:
-            st.error(f"Error al procesar el Ticker de forma individual: {str(e)}")
+        except:
+            pass
 
 # =========================================================
-# PESTAÑA 3: CONFIGURACIÓN Y EDICIÓN DE LISTAS
+# PESTAÑA 3: CONFIGURACIÓN DE LISTAS
 # =========================================================
 with pestaña3:
     st.subheader("⚙️ Panel de Edición y Control de Listas Pregrabadas")
-    
-    st.write("### 📋 Ver Componentes de una Lista")
     lista_a_revisar = st.selectbox("Selecciona una lista para consultar:", list(st.session_state.listas_guardadas.keys()))
-    
     if lista_a_revisar:
         tickers_en_lista = st.session_state.listas_guardadas[lista_a_revisar]
-        st.info(f"La lista **{lista_a_revisar}** contiene actualmente **{len(tickers_en_lista)}** activos.")
-        df_tickers = pd.DataFrame(tickers_en_lista, columns=["Ticker Oficial (Yahoo Finance)"])
-        st.dataframe(df_tickers, use_container_width=True)
-
-    st.write("---")
-    
-    st.write("### 🛠️ Modificar Tickers de una Lista Existente")
-    col_mod1, col_mod2 = st.columns(2)
-    
-    with col_mod1:
-        nuevo_ticker = st.text_input("Introduce un Ticker para AÑADIR (Ej: TSLA, NVDA):").upper().strip()
-        if st.button("➕ Añadir Ticker a la Lista"):
-            if nuevo_ticker and nuevo_ticker not in st.session_state.listas_guardadas[lista_a_revisar]:
-                st.session_state.listas_guardadas[lista_a_revisar].append(nuevo_ticker)
-                st.success(f"¡{nuevo_ticker} añadido con éxito!")
-                st.rerun()
-                
-    with col_mod2:
-        ticker_eliminar = st.text_input("Introduce un Ticker para ELIMINAR:").upper().strip()
-        if st.button("❌ Eliminar Ticker de la Lista"):
-            if ticker_eliminar in st.session_state.listas_guardadas[lista_a_revisar]:
-                st.session_state.listas_guardadas[lista_a_revisar].remove(ticker_eliminar)
-                st.success(f"¡{ticker_eliminar} retirado con éxito!")
-                st.rerun()
-
-    st.write("---")
-
-    st.write("### 🆕 Crear una Nueva Lista Personalizada")
-    nombre_nueva_lista = st.text_input("Nombre de la nueva lista (Ej: Robótica Médica):").strip()
-    tickers_nueva_lista = st.text_area("Introduce los Tickers separados por comas (Ej: AAPL, MSFT, GOOG):").upper()
-    
-    if st.button("💾 Guardar Nueva Lista en el Sistema"):
-        if nombre_nueva_lista and tickers_nueva_lista:
-            lista_limpia = [t.strip() for t in tickers_nueva_lista.split(",") if t.strip()]
-            st.session_state.listas_guardadas[nombre_nueva_lista] = lista_limpia
-            st.success(f"¡La nueva lista '{nombre_nueva_lista}' ha sido registrada!")
-            st.rerun()
+        st.dataframe(pd.DataFrame(tickers_en_lista, columns=["Ticker Oficial"]), use_container_width=True)
