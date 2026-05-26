@@ -46,6 +46,19 @@ def comprobar_mercado_abierto():
         return True
     return False
 
+# --- FUNCIÓN OPTIMIZADA CON CACHÉ PARA OBTENER INFO CLAVE DE YFINANCE ---
+@st.cache_data(ttl=300)  # Guarda la info 5 minutos para evitar bloqueos de IP
+def obtener_info_segura(ticker):
+    try:
+        t = yf.Ticker(ticker)
+        info = t.info
+        target = info.get('targetMedianPrice', None)
+        # Intentamos capturar el rendimiento desde info
+        dy = info.get('dividendYield', None)
+        return target, dy
+    except:
+        return None, None
+
 # =========================================================
 # PESTAÑA 1: BOT MASIVO AUTOMÁTICO 30K
 # =========================================================
@@ -68,7 +81,7 @@ with pestaña1:
     with col_r3:
         max_activos_cartera = st.number_input("Cupo máximo de acciones en cartera:", min_value=1, max_value=30, value=10, step=1)
 
-    if st.button("🔄 Ejecutar Embudo Avanzado e Intercerptar Dinero Institucional"):
+    if st.button("🔄 Ejecutar Embudo Avanzado e Interceptar Dinero Institucional"):
         st.cache_data.clear()
         st.toast("Rastreando huella institucional y aplicando medias estructurales...")
 
@@ -80,7 +93,8 @@ with pestaña1:
 
         tickers_string = " ".join(lista_tickers)
         try:
-            datos_globales = yf.download(tickers_string, period="1y", group_by="ticker", progress=False)
+            # Descargamos acciones incluyendo dividendos implícitos en el historial masivo
+            datos_globales = yf.download(tickers_string, period="1y", group_by="ticker", progress=False, actions=True)
         except:
             datos_globales = pd.DataFrame()
 
@@ -90,7 +104,7 @@ with pestaña1:
                     historial = datos_globales[tick].dropna()
                 else:
                     t = yf.Ticker(tick)
-                    historial = t.history(period="1y")
+                    historial = t.history(period="1y", actions=True)
                 
                 if not historial.empty and len(historial) >= 200:
                     precio_actual = historial['Close'].iloc[-1]
@@ -107,14 +121,15 @@ with pestaña1:
                             crecimiento_porcentaje = max(22.5, round(crecimiento_precio, 1))
 
                             if crecimiento_porcentaje >= 20.0:
-                                try:
-                                    t_info = yf.Ticker(tick).info
-                                    target_estimado = t_info.get('targetMedianPrice')
-                                    div_yield = t_info.get('dividendYield')
-                                except:
-                                    target_estimado = None
-                                    div_yield = None
-                                    
+                                # Usar la función optimizada con caché para evitar saturación
+                                target_estimado, div_yield = obtener_info_segura(tick)
+                                
+                                # PLAN B DE SEGURIDAD PARA DIVIDENDOS: Si .info falla, calcularlo usando el historial real descargado
+                                if (div_yield is None or div_yield == 0) and 'Dividends' in historial.columns:
+                                    dividendos_totales_año = historial['Dividends'].sum()
+                                    if dividendos_totales_año > 0:
+                                        div_yield = dividendos_totales_año / precio_actual
+
                                 if target_estimado is None or target_estimado == 0: 
                                     potencial_4a = crecimiento_porcentaje * 1.18
                                 else:
@@ -127,7 +142,7 @@ with pestaña1:
                                 if div_yield is None or div_yield == 0:
                                     div_txt = "❌ 0%"
                                 else:
-                                    div_txt = f"💰 {div_yield * 100:.1f}%"
+                                    div_txt = f"💰 {div_yield * 100:.2f}%"
                                 
                                 if volumen_actual > (media_volumen_20 * 1.15):
                                     fuerza_volumen = "🔥 ALTO"
@@ -209,7 +224,7 @@ with pestaña1:
         st.info("Ningún activo de la lista cumple los filtros institucionales exigidos ahora mismo.")
 
 # =========================================================
-# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO (CORREGIDA Y OPTIMIZADA)
+# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO
 # =========================================================
 with pestaña2:
     st.subheader("🔍 Analizador Técnico y Avanzado de Tendencias")
@@ -218,7 +233,7 @@ with pestaña2:
     st.info("""
     💡 **Guía Rápida de Métricas:**
     * **Ratio R:B (Riesgo : Beneficio):** Muestra cuánto ganas por cada euro que arriesgas hasta el suelo de los últimos 50 días.
-    * **Rendimiento Dividendo:** Sincronizado dinámicamente con los datos oficiales del mercado en tiempo real.
+    * **Rendimiento Dividendo:** Sincronizado mediante doble verificación analítica y datos en local.
     """)
     
     lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", ["Ninguna"] + list(st.session_state.listas_guardadas.keys()))
@@ -230,7 +245,7 @@ with pestaña2:
         with st.spinner("Sincronizando métricas avanzadas en vivo..."):
             tickers_string = " ".join(tickers_lista)
             try:
-                datos_globales_p2 = yf.download(tickers_string, period="1y", group_by="ticker", progress=False)
+                datos_globales_p2 = yf.download(tickers_string, period="1y", group_by="ticker", progress=False, actions=True)
             except:
                 datos_globales_p2 = pd.DataFrame()
 
@@ -240,26 +255,25 @@ with pestaña2:
                         h = datos_globales_p2[tick].dropna()
                     else:
                         t_obj = yf.Ticker(tick)
-                        h = t_obj.history(period="1y")
+                        h = t_obj.history(period="1y", actions=True)
                     
                     if not h.empty and len(h) >= 50:
                         p_actual = h['Close'].iloc[-1]
                         p_media = h['Close'].iloc[-50:].mean()
                         p_minimo = h['Close'].iloc[-50:].min()
                         
-                        # MODIFICACIÓN CLAVE: Llamada individual aislada para capturar targets y dividendos correctos
-                        try:
-                            ticker_info = yf.Ticker(tick).info
-                            target_val = ticker_info.get('targetMedianPrice')
-                            div_yield = ticker_info.get('dividendYield')
-                        except:
-                            target_val = None
-                            div_yield = None
+                        # Extraer info usando la función protegida
+                        target_val, div_yield = obtener_info_segura(tick)
+                        
+                        # Doble verificación para dividendos históricos reales
+                        if (div_yield is None or div_yield == 0) and 'Dividends' in h.columns:
+                            dividendos_anuales = h['Dividends'].sum()
+                            if dividendos_anuales > 0:
+                                div_yield = dividendos_anuales / p_actual
                         
                         precio_hace_60d = h['Close'].iloc[-60] if len(h) >= 60 else h['Close'].iloc[0]
                         crec_pct = ((p_actual - precio_hace_60d) / precio_hace_60d) * 100
                         
-                        # ELIMINADO EL FILTRO ESTÁTICO DE 18.5%: Proyección dinámica real basada en inercia si falta el target
                         if target_val is None or target_val == 0:
                             potencial_val = max(20.0, crec_pct * 1.12)
                             target_val = p_actual * (1 + (potencial_val/100))
@@ -270,7 +284,6 @@ with pestaña2:
                         if riesgo_suelo <= 0: riesgo_suelo = 0.5
                         ratio_rb = potencial_val / riesgo_suelo
                         
-                        # CORRECCIÓN DE RENDIMIENTO DE DIVIDENDO: Captura el porcentaje real exacto
                         if div_yield is None or div_yield == 0:
                             div_txt = "❌ 0% (Puro Crecimiento)"
                         else:
@@ -311,7 +324,7 @@ with pestaña2:
         accion = accion.upper().strip()
         try:
             ticker_obj = yf.Ticker(accion)
-            datos_hist = ticker_obj.history(period="2y")
+            datos_hist = ticker_obj.history(period="2y", actions=True)
             
             if not datos_hist.empty and len(datos_hist) >= 200:
                 datos_hist['Media 50D (Medio Plazo)'] = datos_hist['Close'].rolling(window=50).mean()
@@ -323,13 +336,12 @@ with pestaña2:
                 p_media_200 = datos_visibles['Media 200D (Institucional)'].iloc[-1]
                 p_min_ind = datos_visibles['Close'].iloc[-50:].min()
                 
-                try:
-                    t_info_ind = ticker_obj.info
-                    target_ind = t_info_ind.get('targetMedianPrice')
-                    div_yield_ind = t_info_ind.get('dividendYield')
-                except:
-                    target_ind = None
-                    div_yield_ind = None
+                target_ind, div_yield_ind = obtener_info_segura(accion)
+
+                if (div_yield_ind is None or div_yield_ind == 0) and 'Dividends' in datos_visibles.columns:
+                    div_tot_ind = datos_visibles['Dividends'].sum()
+                    if div_tot_ind > 0:
+                        div_yield_ind = div_tot_ind / p_actual_ind
 
                 if target_ind is None or target_ind == 0: target_ind = p_actual_ind * 1.25
                 
@@ -344,10 +356,8 @@ with pestaña2:
                 
                 if p_actual_ind > p_media_200:
                     diagnostico_txt = "COMPRAR" if p_actual_ind > p_media_50 else "ACUMULAR"
-                    explicacion_ind = "Fuerza institucional por encima de la media de 200 días."
                 else:
                     diagnostico_txt = "ESPERAR"
-                    explicacion_ind = "Cotizando por debajo de la media institucional."
                 
                 st.write("#### 📊 Métricas Clave de Decisión")
                 c_i1, c_i2, c_i3, c_i4 = st.columns(4)
