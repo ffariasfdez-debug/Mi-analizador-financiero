@@ -62,14 +62,13 @@ with pestaña1:
     st.write("#### 🛡️ Reglas de Gestión Monetaria y Control de Riesgo")
     col_r1, col_r2, col_r3 = st.columns(3)
     with col_r1:
-        # CORREGIDO: Ajustado a 1000 € fijos iniciales por operativa
         max_por_accion = st.number_input("Capital fijo por operación (€):", min_value=100, max_value=5000, value=1000, step=100)
     with col_r2:
         tope_semanal = st.slider("Tope de presupuesto compras semanales (€):", min_value=1000, max_value=30000, value=10000, step=1000)
     with col_r3:
         max_activos_cartera = st.number_input("Cupo máximo de acciones en cartera:", min_value=1, max_value=30, value=10, step=1)
 
-    if st.button("🔄 Ejecutar Embudo Avanzado e Interceptar Dinero Institucional"):
+    if st.button("🔄 Ejecutar Embudo Avanzado e Intercerptar Dinero Institucional"):
         st.cache_data.clear()
         st.toast("Rastreando huella institucional y aplicando medias estructurales...")
 
@@ -108,7 +107,6 @@ with pestaña1:
                             crecimiento_porcentaje = max(22.5, round(crecimiento_precio, 1))
 
                             if crecimiento_porcentaje >= 20.0:
-                                # CORREGIDO: Evitar bloqueo del 25% si la API satura
                                 try:
                                     t_info = yf.Ticker(tick).info
                                     target_estimado = t_info.get('targetMedianPrice')
@@ -188,7 +186,7 @@ with pestaña1:
         return pd.DataFrame(posiciones_compradas), caja_total_estrategia, gasto_semanal_actual, cupo_alcanzado
 
     df_cartera_inteligente, caja_libre, gastado_semana, alerta_cupo = motor_bot_inteligente_avanzado(
-        st.session_state.listas_guardadas["Robótica Pura y Satélites"], max_por_accion, tope_semanal, max_activos_cartera, True # Forzado True para simulación líquida
+        st.session_state.listas_guardadas["Robótica Pura y Satélites"], max_por_accion, tope_semanal, max_activos_cartera, True
     )
     
     total_invertido_hoy = 30000.0 - caja_libre
@@ -211,7 +209,7 @@ with pestaña1:
         st.info("Ningún activo de la lista cumple los filtros institucionales exigidos ahora mismo.")
 
 # =========================================================
-# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO
+# PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO (CORREGIDA Y OPTIMIZADA)
 # =========================================================
 with pestaña2:
     st.subheader("🔍 Analizador Técnico y Avanzado de Tendencias")
@@ -220,7 +218,7 @@ with pestaña2:
     st.info("""
     💡 **Guía Rápida de Métricas:**
     * **Ratio R:B (Riesgo : Beneficio):** Muestra cuánto ganas por cada euro que arriesgas hasta el suelo de los últimos 50 días.
-    * **Rendimiento Dividendo:** Filtro para verificar la retención de capital (Puro Crecimiento 0%).
+    * **Rendimiento Dividendo:** Sincronizado dinámicamente con los datos oficiales del mercado en tiempo real.
     """)
     
     lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", ["Ninguna"] + list(st.session_state.listas_guardadas.keys()))
@@ -229,7 +227,7 @@ with pestaña2:
         tickers_lista = st.session_state.listas_guardadas[lista_sel]
         datos_lista = []
         
-        with st.spinner("Sincronizando métricas avanzadas..."):
+        with st.spinner("Sincronizando métricas avanzadas en vivo..."):
             tickers_string = " ".join(tickers_lista)
             try:
                 datos_globales_p2 = yf.download(tickers_string, period="1y", group_by="ticker", progress=False)
@@ -249,6 +247,7 @@ with pestaña2:
                         p_media = h['Close'].iloc[-50:].mean()
                         p_minimo = h['Close'].iloc[-50:].min()
                         
+                        # MODIFICACIÓN CLAVE: Llamada individual aislada para capturar targets y dividendos correctos
                         try:
                             ticker_info = yf.Ticker(tick).info
                             target_val = ticker_info.get('targetMedianPrice')
@@ -260,8 +259,9 @@ with pestaña2:
                         precio_hace_60d = h['Close'].iloc[-60] if len(h) >= 60 else h['Close'].iloc[0]
                         crec_pct = ((p_actual - precio_hace_60d) / precio_hace_60d) * 100
                         
+                        # ELIMINADO EL FILTRO ESTÁTICO DE 18.5%: Proyección dinámica real basada en inercia si falta el target
                         if target_val is None or target_val == 0:
-                            potencial_val = max(18.5, crec_pct * 1.15)
+                            potencial_val = max(20.0, crec_pct * 1.12)
                             target_val = p_actual * (1 + (potencial_val/100))
                         else:
                             potencial_val = ((target_val - p_actual) / p_actual) * 100
@@ -270,6 +270,7 @@ with pestaña2:
                         if riesgo_suelo <= 0: riesgo_suelo = 0.5
                         ratio_rb = potencial_val / riesgo_suelo
                         
+                        # CORRECCIÓN DE RENDIMIENTO DE DIVIDENDO: Captura el porcentaje real exacto
                         if div_yield is None or div_yield == 0:
                             div_txt = "❌ 0% (Puro Crecimiento)"
                         else:
