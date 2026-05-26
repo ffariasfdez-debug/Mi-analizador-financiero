@@ -118,10 +118,17 @@ with pestaña1:
                             if crecimiento_porcentaje >= 20.0:
                                 # Conectar con datos de analistas para potencial dinámico
                                 try:
+                                    # TRAER DATOS EN VIVO REALES DE YAHOO O PROYECTAR DINÁMICAMENTE
+                                try:
                                     t_info = yf.Ticker(tick).info
                                     target_estimado = t_info.get('targetMedianPrice')
-                                    if target_estimado is None or target_estimado == 0: 
-                                        target_estimado = precio_actual * 1.25
+                                except:
+                                    target_estimado = None
+                                
+                                if target_estimado is None or target_estimado == 0: 
+                                    potencial_4a = crecimiento_porcentaje * 1.12
+                                else:
+                                    potencial_4a = ((target_estimado - precio_actual) / precio_actual) * 100
                                 except:
                                     target_estimado = precio_actual * 1.25
                                     
