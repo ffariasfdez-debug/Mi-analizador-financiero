@@ -3,16 +3,20 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
 import pytz
+import os
 
 # 1. Configuración inicial de la plataforma (Obligatorio en la primera línea)
 st.set_page_config(page_title="Centro de Mando Financiero", layout="wide")
+
+# Archivo local para almacenar la cartera de manera permanente
+ARCHIVO_CARTERA = "cartera_guardada.csv"
 
 # --- TÍTULO PRINCIPAL ---
 st.title("🎛️ Centro de Mando Financiero Pro")
 st.write(f"**Estado del Sistema:** Conectado en Vivo | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 st.write("---")
 
-# Inicializar las listas y el almacenamiento de la cartera en el estado de la sesión
+# Inicializar las listas pregrabadas en el estado de la sesión
 if "listas_guardadas" not in st.session_state:
     st.session_state.listas_guardadas = {
         "Semiconductores Premium": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "AVGO", "MRVL", "TSMC"],
@@ -28,8 +32,16 @@ if "listas_guardadas" not in st.session_state:
         "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR", "NVDA"]
     }
 
+# --- LÓGICA DE PERSISTENCIA MÁXIMA ---
+# Si existe el archivo grabado en el disco, lo cargamos por defecto en la sesión
 if "cartera_compras" not in st.session_state:
-    st.session_state.cartera_compras = pd.DataFrame()
+    if os.path.exists(ARCHIVO_CARTERA):
+        try:
+            st.session_state.cartera_compras = pd.read_csv(ARCHIVO_CARTERA)
+        except:
+            st.session_state.cartera_compras = pd.DataFrame()
+    else:
+        st.session_state.cartera_compras = pd.DataFrame()
 
 # --- MENÚ DE PESTAÑAS PRINCIPALES ---
 pestaña1, pestaña2, pestaña3 = st.tabs([
@@ -49,7 +61,7 @@ def comprobar_mercado_abierto():
         return True
     return False
 
-# --- FUNCIÓN OPTIMIZADA CON CACHÉ PARA OBTENER INFO CLAVE DE YFINANCE ---
+# --- FUNCIÓN OPTIMIZADA Y CORREGIDA PARA OBTENER INFO CLAVE DE YFINANCE ---
 @st.cache_data(ttl=300)
 def obtener_info_segura(ticker):
     try:
@@ -57,7 +69,12 @@ def obtener_info_segura(ticker):
         info = t.info
         target = info.get('targetMedianPrice', None)
         dy = info.get('dividendYield', None)
-        return target, dy
+        
+        if dy is not None and dy > 0:
+            if dy > 1.0:  # Si viene formateado como entero (ej: 1.5 en vez de 0.015)
+                dy = dy / 100.0
+            return target, dy
+        return target, None
     except:
         return None, None
 
@@ -89,13 +106,15 @@ with pestaña1:
     with col_btn2:
         if st.button("🗑️ Resetear Cartera (Empezar de Cero)"):
             st.session_state.cartera_compras = pd.DataFrame()
+            if os.path.exists(ARCHIVO_CARTERA):
+                os.remove(ARCHIVO_CARTERA)
             st.cache_data.clear()
-            st.success("Cartera borrada. ¡Listo para comenzar limpio!")
+            st.success("¡Archivo físico borrado y cartera reseteada con éxito!")
             st.rerun()
 
     if ejecutar_bot:
         st.cache_data.clear()
-        st.toast("Rastreando huella institucional y capturando precios en el segundo exacto...")
+        st.toast("Rastreando huella institucional y capturando precios permanentes...")
 
         lista_tickers = st.session_state.listas_guardadas["Robótica Pura y Satélites"]
         tickers_string = " ".join(lista_tickers)
@@ -138,10 +157,14 @@ with pestaña1:
                             if crecimiento_porcentaje >= 20.0:
                                 target_estimado, div_yield = obtener_info_segura(tick)
                                 
-                                if (div_yield is None or div_yield == 0) and 'Dividends' in historial.columns:
-                                    dividendos_totales_año = historial['Dividends'].sum()
-                                    if dividendos_totales_año > 0:
-                                        div_yield = dividendos_totales_año / precio_actual
+                                if div_yield is None or div_yield == 0:
+                                    try:
+                                        if 'Dividends' in historial.columns:
+                                            dividendos_totales_año = historial['Dividends'].sum()
+                                            if dividendos_totales_año > 0:
+                                                div_yield = dividendos_totales_año / precio_actual
+                                    except:
+                                        div_yield = 0
 
                                 if target_estimado is None or target_estimado == 0: 
                                     potencial_4a = crecimiento_porcentaje * 1.18
@@ -200,7 +223,10 @@ with pestaña1:
                     "Fecha Compra": fecha_compra,
                     "Candado": f"🔒 {fecha_liberacion}"
                 })
+            
+            # Guardamos el DataFrame en el estado de la sesión y exportamos a CSV físico
             st.session_state.cartera_compras = pd.DataFrame(posiciones_compradas)
+            st.session_state.cartera_compras.to_csv(ARCHIVO_CARTERA, index=False)
 
     df_mostrar = st.session_state.cartera_compras.copy()
     caja_libre = 30000.0
@@ -266,7 +292,7 @@ with pestaña1:
     st.write("### 📊 Cartera Generada con Filtro Completo y Métricas Reales")
     if not df_mostrar.empty:
         st.dataframe(df_final_ui, use_container_width=True)
-        st.success("💡 Las posiciones mostradas cumplen el protocolo institucional completo y monitorizan su P&L al minuto.")
+        st.success("💾 Sistema de memoria permanente activo: Las posiciones están guardadas de forma segura en disco.")
     else:
         st.info("Ningún activo de la lista cumple los filtros institucionales exigidos ahora mismo o la cartera está vacía.")
 
@@ -276,12 +302,6 @@ with pestaña1:
 with pestaña2:
     st.subheader("🔍 Analizador Técnico y Avanzado de Tendencias")
     st.write("### 📁 Opción A: Proyectar Listas Completas con Métricas de Riesgo y Dividendos")
-    
-    st.info("""
-    💡 **Guía Rápida de Métricas:**
-    * **Ratio R:B (Riesgo : Beneficio):** Muestra cuánto ganas por cada euro que arriesgas hasta el suelo de los últimos 50 días.
-    * **Rendimiento Dividendo:** Sincronizado mediante doble verificación analítica y datos en local.
-    """)
     
     lista_sel = st.selectbox("Selecciona una lista pregrabada para proyectar:", ["Ninguna"] + list(st.session_state.listas_guardadas.keys()))
     
@@ -311,10 +331,14 @@ with pestaña2:
                         
                         target_val, div_yield = obtener_info_segura(tick)
                         
-                        if (div_yield is None or div_yield == 0) and 'Dividends' in h.columns:
-                            dividendos_anuales = h['Dividends'].sum()
-                            if dividendos_anuales > 0:
-                                div_yield = dividendos_anuales / p_actual
+                        if div_yield is None or div_yield == 0:
+                            try:
+                                if 'Dividends' in h.columns:
+                                    dividendos_anuales = h['Dividends'].sum()
+                                    if dividendos_anuales > 0 and p_actual > 0:
+                                        div_yield = dividendos_anuales / p_actual
+                            except:
+                                div_yield = 0
                         
                         precio_hace_60d = h['Close'].iloc[-60] if len(h) >= 60 else h['Close'].iloc[0]
                         crec_pct = ((p_actual - precio_hace_60d) / precio_hace_60d) * 100
@@ -329,10 +353,7 @@ with pestaña2:
                         if riesgo_suelo <= 0: riesgo_suelo = 0.5
                         ratio_rb = potencial_val / riesgo_suelo
                         
-                        if div_yield is None or div_yield == 0:
-                            div_txt = "❌ 0% (Puro Crecimiento)"
-                        else:
-                            div_txt = f"💰 {div_yield * 100:.2f}%"
+                        div_txt = "❌ 0%" if (div_yield is None or div_yield == 0) else f"💰 {div_yield * 100:.2f}%"
                         
                         if p_actual > p_media and potencial_val >= 20.0:
                             sem_lista = "🟢 COMPRAR"
@@ -352,7 +373,7 @@ with pestaña2:
                             "Ratio R:B (1 : X)": f"1 : {ratio_rb:.1f}",
                             "Rendimiento Dividendo": div_txt,
                             "Estrategia": sem_lista,
-                            "Nota Técnica": explicacion
+                            "Nota Técnico": explicacion
                         })
                 except:
                     pass
@@ -383,10 +404,14 @@ with pestaña2:
                 
                 target_ind, div_yield_ind = obtener_info_segura(accion)
 
-                if (div_yield_ind is None or div_yield_ind == 0) and 'Dividends' in datos_visibles.columns:
-                    div_tot_ind = datos_visibles['Dividends'].sum()
-                    if div_tot_ind > 0:
-                        div_yield_ind = div_tot_ind / p_actual_ind
+                if div_yield_ind is None or div_yield_ind == 0:
+                    try:
+                        if 'Dividends' in datos_visibles.columns:
+                            div_tot_ind = datos_visibles['Dividends'].sum()
+                            if div_tot_ind > 0 and p_actual_ind > 0:
+                                div_yield_ind = div_tot_ind / p_actual_ind
+                    except:
+                        div_yield_ind = 0
 
                 if target_ind is None or target_ind == 0: target_ind = p_actual_ind * 1.25
                 
@@ -394,10 +419,7 @@ with pestaña2:
                 riesgo_ind = max(0.5, ((p_actual_ind - p_min_ind) / p_actual_ind) * 100)
                 ratio_rb_ind = potencial_ind / riesgo_ind
                 
-                if div_yield_ind is None or div_yield_ind == 0:
-                    div_ind_txt = "❌ 0% (Puro Crecimiento)"
-                else:
-                    div_ind_txt = f"💰 {div_yield_ind * 100:.2f}%"
+                div_ind_txt = "❌ 0%" if (div_yield_ind is None or div_yield_ind == 0) else f"💰 {div_yield_ind * 100:.2f}%"
                 
                 if p_actual_ind > p_media_200:
                     diagnostico_txt = "COMPRAR" if p_actual_ind > p_media_50 else "ACUMULAR"
