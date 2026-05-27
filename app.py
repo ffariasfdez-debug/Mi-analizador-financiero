@@ -4,36 +4,46 @@ import yfinance as yf
 from datetime import datetime, timedelta
 import pytz
 import os
+import json
 
 # 1. Configuración inicial de la plataforma (Obligatorio en la primera línea)
 st.set_page_config(page_title="Centro de Mando Financiero", layout="wide")
 
-# Archivo local para almacenar la cartera de manera permanente
+# Archivos locales para almacenamiento permanente
 ARCHIVO_CARTERA = "cartera_guardada.csv"
+ARCHIVO_LISTAS = "listas_permanentes.json"
 
 # --- TÍTULO PRINCIPAL ---
 st.title("🎛️ Centro de Mando Financiero Pro")
 st.write(f"**Estado del Sistema:** Conectado en Vivo | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 st.write("---")
 
-# Inicializar las listas pregrabadas en el estado de la sesión
+# --- LÓGICA DE PERSISTENCIA: LISTAS PREGRABADAS ---
 if "listas_guardadas" not in st.session_state:
-    st.session_state.listas_guardadas = {
-        "Semiconductores Premium": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "AVGO", "MRVL", "TSMC"],
-        "Robótica Pura y Satélites": [
-            "ISRG", "ZBH", "STE", "ROK", "CGNX", "TER", 
-            "ATS", "SYM", "GWW", "AME", "ADI", "FTV", "KEYS", "PTC", 
-            "ANSS", "ROCK", "COHR", "DE", "CAT", "AVAV", "GE", "HON",
-            "NVDA", "AMD", "ARM", "AVGO", "MRVL",
-            "SNPS", "CDNS", "ANSS", "SPLK",
-            "SYK", "MDT", "BSX"
-        ],
-        "Fotónica y Sensores": ["IPGP", "LITE", "COHR", "CGNX"],
-        "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR", "NVDA"]
-    }
+    if os.path.exists(ARCHIVO_LISTAS):
+        try:
+            with open(ARCHIVO_LISTAS, "r") as f:
+                st.session_state.listas_guardadas = json.load(f)
+        except:
+            os.remove(ARCHIVO_LISTAS)  # Reset si el archivo está corrupto
+    
+    # Si no existía archivo o falló la lectura, cargamos el diccionario base
+    if "listas_guardadas" not in st.session_state:
+        st.session_state.listas_guardadas = {
+            "Semiconductores Premium": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "AVGO", "MRVL", "TSMC"],
+            "Robótica Pura y Satélites": [
+                "ISRG", "ZBH", "STE", "ROK", "CGNX", "TER", 
+                "ATS", "SYM", "GWW", "AME", "ADI", "FTV", "KEYS", "PTC", 
+                "ANSS", "ROCK", "COHR", "DE", "CAT", "AVAV", "GE", "HON",
+                "NVDA", "AMD", "ARM", "AVGO", "MRVL",
+                "SNPS", "CDNS", "ANSS", "SPLK",
+                "SYK", "MDT", "BSX"
+            ],
+            "Fotónica y Sensores": ["IPGP", "LITE", "COHR", "CGNX"],
+            "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR", "NVDA"]
+        }
 
-# --- LÓGICA DE PERSISTENCIA MÁXIMA ---
-# Si existe el archivo grabado en el disco, lo cargamos por defecto en la sesión
+# --- LÓGICA DE PERSISTENCIA: CARTERA DE COMPRAS ---
 if "cartera_compras" not in st.session_state:
     if os.path.exists(ARCHIVO_CARTERA):
         try:
@@ -71,7 +81,7 @@ def obtener_info_segura(ticker):
         dy = info.get('dividendYield', None)
         
         if dy is not None and dy > 0:
-            if dy > 1.0:  # Si viene formateado como entero (ej: 1.5 en vez de 0.015)
+            if dy > 1.0:  # Si viene como entero (ej: 1.5 en vez de 0.015)
                 dy = dy / 100.0
             return target, dy
         return target, None
@@ -116,6 +126,7 @@ with pestaña1:
         st.cache_data.clear()
         st.toast("Rastreando huella institucional y capturando precios permanentes...")
 
+        # El bot lee dinámicamente tu lista guardada (así hereda si has añadido/quitado tickers)
         lista_tickers = st.session_state.listas_guardadas["Robótica Pura y Satélites"]
         tickers_string = " ".join(lista_tickers)
         
@@ -224,7 +235,6 @@ with pestaña1:
                     "Candado": f"🔒 {fecha_liberacion}"
                 })
             
-            # Guardamos el DataFrame en el estado de la sesión y exportamos a CSV físico
             st.session_state.cartera_compras = pd.DataFrame(posiciones_compradas)
             st.session_state.cartera_compras.to_csv(ARCHIVO_CARTERA, index=False)
 
@@ -287,14 +297,14 @@ with pestaña1:
     c4.metric("Gasto Semanal", f"{gastado_semana:,.2f} € / {tope_semanal:,.2f} €")
 
     if alerta_cupo:
-        st.warning(f"⚠️ **Aviso de Control:** Se ha detenido la compra porque se alcanzó el cupo máximo de {max_activos_cartera} acciones en cartera.")
+        st.warning(f"⚠️ **Aviso de Control:** Se alcanzó el cupo máximo de {max_activos_cartera} acciones.")
 
     st.write("### 📊 Cartera Generada con Filtro Completo y Métricas Reales")
     if not df_mostrar.empty:
         st.dataframe(df_final_ui, use_container_width=True)
-        st.success("💾 Sistema de memoria permanente activo: Las posiciones están guardadas de forma segura en disco.")
+        st.success("💾 Memoria Activa: Datos de cartera blindados contra refrescos.")
     else:
-        st.info("Ningún activo de la lista cumple los filtros institucionales exigidos ahora mismo o la cartera está vacía.")
+        st.info("Ningún activo de la lista cumple los filtros o la cartera está vacía.")
 
 # =========================================================
 # PESTAÑA 2: ANALIZADOR TÉCNICO AVANZADO
@@ -384,7 +394,7 @@ with pestaña2:
 
     st.write("---")
     st.write("### 🔍 Opción B: Ficha de Inteligencia Estructural Individual")
-    accion = st.text_input("Introduce el Ticker de una acción (Ej: ISRG, NVDA, DE):", "ISRG")
+    accion = st.text_input("Introduce el Ticker de una acción (Ej: ISRG, NVDA, DE):", "KLAC")
     
     if accion:
         accion = accion.upper().strip()
@@ -431,7 +441,7 @@ with pestaña2:
                 c_i1.metric("Precio de Mercado", f"{p_actual_ind:.2f} €")
                 c_i2.metric("Dividendo Anual", div_ind_txt)
                 c_i3.metric("Ratio Riesgo / Beneficio", f"1 : {ratio_rb_ind:.1f}")
-                c_i4.metric("Estrategia Recomendada", diagnostico_txt)
+                c_i4.metric("Estrategia Recommended", diagnostico_txt)
                 
                 df_grafico = datos_visibles[['Close', 'Media 50D (Medio Plazo)', 'Media 200D (Institucional)']]
                 df_grafico.columns = ['Precio de Cierre', 'Media Móvil 50 días', 'Media Móvil 200 días']
@@ -440,11 +450,59 @@ with pestaña2:
             pass
 
 # =========================================================
-# PESTAÑA 3: CONFIGURACIÓN DE LISTAS
+# PESTAÑA 3: CONFIGURACIÓN DE LISTAS (EDITABLE Y PERMANENTE)
 # =========================================================
 with pestaña3:
     st.subheader("⚙️ Panel de Edición y Control de Listas Pregrabadas")
-    lista_a_revisar = st.selectbox("Selecciona una lista para consultar:", list(st.session_state.listas_guardadas.keys()))
+    st.write("Gestiona el universo de activos que lee el Bot y el Analizador Avanzado de manera persistente.")
+
+    lista_a_revisar = st.selectbox("Selecciona una lista para gestionar:", list(st.session_state.listas_guardadas.keys()))
+    
     if lista_a_revisar:
-        tickers_en_lista = st.session_state.listas_guardadas[lista_a_revisar]
-        st.dataframe(pd.DataFrame(tickers_en_lista, columns=["Ticker"]), use_container_width=True)
+        tickers_actuales = st.session_state.listas_guardadas[lista_a_revisar]
+        
+        # --- SUB-PANEL: AÑADIR NUEVO TICKER ---
+        st.write("#### ➕ Añadir Activo a esta Lista")
+        c_add1, c_add2 = st.columns([3, 1])
+        with c_add1:
+            nuevo_ticker = st.text_input("Introduce el Ticker oficial (Ej: RKLB, MSFT, INTC):", key="txt_nuevo_ticker").upper().strip()
+        with c_add2:
+            st.write("##") # Espaciador para alinear el botón
+            if st.button("📥 Insertar Activo"):
+                if nuevo_ticker and nuevo_ticker not in tickers_actuales:
+                    tickers_actuales.append(nuevo_ticker)
+                    st.session_state.listas_guardadas[lista_a_revisar] = tickers_actuales
+                    
+                    # Guardar físicamente en el JSON
+                    with open(ARCHIVO_LISTAS, "w") as f:
+                        json.dump(st.session_state.listas_guardadas, f)
+                    
+                    st.success(f"¡{nuevo_ticker} añadido con éxito a '{lista_a_revisar}'!")
+                    st.rerun()
+                elif nuevo_ticker in tickers_actuales:
+                    st.warning(f"El activo {nuevo_ticker} ya forma parte de esta lista.")
+
+        # --- SUB-PANEL: ELIMINAR TICKER ---
+        st.write("#### ➖ Eliminar Activo de esta Lista")
+        c_del1, c_del2 = st.columns([3, 1])
+        with c_del1:
+            ticker_a_borrar = st.selectbox("Selecciona el activo que deseas retirar:", ["Ninguno"] + tickers_actuales)
+        with c_del2:
+            st.write("##") # Espaciador
+            if st.button("🗑️ Borrar Activo"):
+                if ticker_a_borrar != "Ninguno":
+                    tickers_actuales.remove(ticker_a_borrar)
+                    st.session_state.listas_guardadas[lista_a_revisar] = tickers_actuales
+                    
+                    # Guardar físicamente en el JSON
+                    with open(ARCHIVO_LISTAS, "w") as f:
+                        json.dump(st.session_state.listas_guardadas, f)
+                        
+                    st.success(f"¡{ticker_a_borrar} eliminado de '{lista_a_revisar}'!")
+                    st.rerun()
+
+        st.write("---")
+        st.write(f"### 📋 Vista Actual Completa: {lista_a_revisar} ({len(tickers_actuales)} activos)")
+        # Mostramos la tabla interactiva y limpia de la lista
+        df_lista_ui = pd.DataFrame(tickers_actuales, columns=["Ticker Asociado"])
+        st.dataframe(df_lista_ui, use_container_width=True)
