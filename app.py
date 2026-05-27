@@ -25,10 +25,11 @@ if "listas_guardadas" not in st.session_state:
             with open(ARCHIVO_LISTAS, "r") as f:
                 st.session_state.listas_guardadas = json.load(f)
         except:
-            os.remove(ARCHIVO_LISTAS)  # Reset si el archivo está corrupto
+            if os.path.exists(ARCHIVO_LISTAS):
+                os.remove(ARCHIVO_LISTAS)  # Reset si el archivo está corrupto
     
     # Si no existía archivo o falló la lectura, cargamos el diccionario base
-    if "listas_guardadas" not in st.session_state:
+    if "listas_guardadas" not in st.session_state or not isinstance(st.session_state.listas_guardadas, dict):
         st.session_state.listas_guardadas = {
             "Semiconductores Premium": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "AVGO", "MRVL", "TSMC"],
             "Robótica Pura y Satélites": [
@@ -42,6 +43,10 @@ if "listas_guardadas" not in st.session_state:
             "Fotónica y Sensores": ["IPGP", "LITE", "COHR", "CGNX"],
             "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR", "NVDA"]
         }
+
+# Asegurar que al menos haya una lista para evitar fallos de interfaz si se borra todo
+if not st.session_state.listas_guardadas:
+    st.session_state.listas_guardadas = {"Mi Lista Principal": []}
 
 # --- LÓGICA DE PERSISTENCIA: CARTERA DE COMPRAS ---
 if "cartera_compras" not in st.session_state:
@@ -126,117 +131,121 @@ with pestaña1:
         st.cache_data.clear()
         st.toast("Rastreando huella institucional y capturando precios permanentes...")
 
-        # El bot lee dinámicamente tu lista guardada (así hereda si has añadido/quitado tickers)
-        lista_tickers = st.session_state.listas_guardadas["Robótica Pura y Satélites"]
-        tickers_string = " ".join(lista_tickers)
+        # Validación por si acaso se borró la lista por defecto
+        nombre_lista_bot = "Robótica Pura y Satélites" if "Robótica Pura y Satélites" in st.session_state.listas_guardadas else list(st.session_state.listas_guardadas.keys())[0]
+        lista_tickers = st.session_state.listas_guardadas[nombre_lista_bot]
         
-        try:
-            datos_globales = yf.download(tickers_string, period="1y", group_by="ticker", progress=False, actions=True)
-            datos_minuto = yf.download(tickers_string, period="1d", interval="1m", group_by="ticker", progress=False)
-        except:
-            datos_globales = pd.DataFrame()
-            datos_minuto = pd.DataFrame()
-
-        candidatas_finalistas = []
-
-        for tick in lista_tickers:
+        if lista_tickers:
+            tickers_string = " ".join(lista_tickers)
             try:
-                if tick in datos_globales.columns.levels[0]:
-                    historial = datos_globales[tick].dropna()
-                else:
-                    t = yf.Ticker(tick)
-                    historial = t.history(period="1y", actions=True)
-                
-                if not historial.empty and len(historial) >= 200:
-                    if tick in datos_minuto.columns.levels[0] and not datos_minuto[tick].dropna().empty:
-                        precio_actual = datos_minuto[tick].dropna()['Close'].iloc[-1]
-                    else:
-                        precio_actual = historial['Close'].iloc[-1]
-
-                    media_30 = historial['Close'].iloc[-30:].mean()
-                    media_200 = historial['Close'].iloc[-200:].mean()
-                    p_minimo_50 = historial['Close'].iloc[-50:].min()
-                    volumen_actual = historial['Volume'].iloc[-1]
-                    media_volumen_20 = historial['Volume'].iloc[-21:-1].mean()
-                    
-                    if precio_actual > media_200:
-                        if precio_actual >= (media_30 * 0.98):
-                            precio_hace_60d = historial['Close'].iloc[-60]
-                            crecimiento_precio = ((precio_actual - precio_hace_60d) / precio_hace_60d) * 100
-                            crecimiento_porcentaje = max(22.5, round(crecimiento_precio, 1))
-
-                            if crecimiento_porcentaje >= 20.0:
-                                target_estimado, div_yield = obtener_info_segura(tick)
-                                
-                                if div_yield is None or div_yield == 0:
-                                    try:
-                                        if 'Dividends' in historial.columns:
-                                            dividendos_totales_año = historial['Dividends'].sum()
-                                            if dividendos_totales_año > 0:
-                                                div_yield = dividendos_totales_año / precio_actual
-                                    except:
-                                        div_yield = 0
-
-                                if target_estimado is None or target_estimado == 0: 
-                                    potencial_4a = crecimiento_porcentaje * 1.18
-                                else:
-                                    potencial_4a = ((target_estimado - precio_actual) / precio_actual) * 100
-                                
-                                riesgo_suelo = ((precio_actual - p_minimo_50) / precio_actual) * 100
-                                if riesgo_suelo <= 0: riesgo_suelo = 0.5
-                                ratio_rb_calc = potencial_4a / riesgo_suelo
-                                
-                                div_txt = "❌ 0%" if (div_yield is None or div_yield == 0) else f"💰 {div_yield * 100:.2f}%"
-                                fuerza_volumen = "🔥 ALTO" if volumen_actual > (media_volumen_20 * 1.15) else "🟢 NORMAL"
-                                
-                                candidatas_finalistas.append({
-                                    "Ticker": tick,
-                                    "Precio Actual": precio_actual,
-                                    "Crecimiento Anual": crecimiento_porcentaje,
-                                    "Potencial Real": potencial_4a,
-                                    "Ratio R:B": f"1 : {ratio_rb_calc:.1f}",
-                                    "Dividendo": div_txt,
-                                    "Volumen Institucional": fuerza_volumen
-                                })
+                datos_globales = yf.download(tickers_string, period="1y", group_by="ticker", progress=False, actions=True)
+                datos_minuto = yf.download(tickers_string, period="1d", interval="1m", group_by="ticker", progress=False)
             except:
-                pass
+                datos_globales = pd.DataFrame()
+                datos_minuto = pd.DataFrame()
 
-        posiciones_compradas = []
-        caja_total_estrategia = 30000.0
-        gasto_semanal_actual = 0.0
-        
-        if candidatas_finalistas:
-            df_ordenado = pd.DataFrame(candidatas_finalistas).sort_values(by="Potencial Real", ascending=False)
+            candidatas_finalistas = []
+
+            for tick in lista_tickers:
+                try:
+                    if tick in datos_globales.columns.levels[0]:
+                        historial = datos_globales[tick].dropna()
+                    else:
+                        t = yf.Ticker(tick)
+                        historial = t.history(period="1y", actions=True)
+                    
+                    if not historial.empty and len(historial) >= 200:
+                        if tick in datos_minuto.columns.levels[0] and not datos_minuto[tick].dropna().empty:
+                            precio_actual = datos_minuto[tick].dropna()['Close'].iloc[-1]
+                        else:
+                            precio_actual = historial['Close'].iloc[-1]
+
+                        media_30 = historial['Close'].iloc[-30:].mean()
+                        media_200 = historial['Close'].iloc[-200:].mean()
+                        p_minimo_50 = historial['Close'].iloc[-50:].min()
+                        volumen_actual = historial['Volume'].iloc[-1]
+                        media_volumen_20 = historial['Volume'].iloc[-21:-1].mean()
+                        
+                        if precio_actual > media_200:
+                            if precio_actual >= (media_30 * 0.98):
+                                precio_hace_60d = historial['Close'].iloc[-60]
+                                crecimiento_precio = ((precio_actual - precio_hace_60d) / precio_hace_60d) * 100
+                                crecimiento_porcentaje = max(22.5, round(crecimiento_precio, 1))
+
+                                if crecimiento_porcentaje >= 20.0:
+                                    target_estimado, div_yield = obtener_info_segura(tick)
+                                    
+                                    if div_yield is None or div_yield == 0:
+                                        try:
+                                            if 'Dividends' in historial.columns:
+                                                dividendos_totales_año = historial['Dividends'].sum()
+                                                if dividendos_totales_año > 0:
+                                                    div_yield = dividendos_totales_año / precio_actual
+                                        except:
+                                            div_yield = 0
+
+                                    if target_estimado is None or target_estimado == 0: 
+                                        potencial_4a = crecimiento_porcentaje * 1.18
+                                    else:
+                                        potencial_4a = ((target_estimado - precio_actual) / precio_actual) * 100
+                                    
+                                    riesgo_suelo = ((precio_actual - p_minimo_50) / precio_actual) * 100
+                                    if riesgo_suelo <= 0: riesgo_suelo = 0.5
+                                    ratio_rb_calc = potencial_4a / riesgo_suelo
+                                    
+                                    div_txt = "❌ 0%" if (div_yield is None or div_yield == 0) else f"💰 {div_yield * 100:.2f}%"
+                                    fuerza_volumen = "🔥 ALTO" if volumen_actual > (media_volumen_20 * 1.15) else "🟢 NORMAL"
+                                    
+                                    candidatas_finalistas.append({
+                                        "Ticker": tick,
+                                        "Precio Actual": precio_actual,
+                                        "Crecimiento Anual": crecimiento_porcentaje,
+                                        "Potencial Real": potencial_4a,
+                                        "Ratio R:B": f"1 : {ratio_rb_calc:.1f}",
+                                        "Dividendo": div_txt,
+                                        "Volumen Institucional": fuerza_volumen
+                                    })
+                except:
+                    pass
+
+            posiciones_compradas = []
+            caja_total_estrategia = 30000.0
+            gasto_semanal_actual = 0.0
             
-            for _, fila in df_ordenado.iterrows():
-                if len(posiciones_compradas) >= max_activos_cartera or caja_total_estrategia < max_por_accion or (gasto_semanal_actual + max_por_accion) > tope_semanal:
-                    break
+            if candidatas_finalistas:
+                df_ordenado = pd.DataFrame(candidatas_finalistas).sort_values(by="Potencial Real", ascending=False)
                 
-                caja_total_estrategia -= max_por_accion
-                gasto_semanal_actual += max_por_accion
+                for _, fila in df_ordenado.iterrows():
+                    if len(posiciones_compradas) >= max_activos_cartera or caja_total_estrategia < max_por_accion or (gasto_semanal_actual + max_por_accion) > tope_semanal:
+                        break
+                    
+                    caja_total_estrategia -= max_por_accion
+                    gasto_semanal_actual += max_por_accion
+                    
+                    fecha_compra = datetime.now().strftime('%d/%m/%Y')
+                    fecha_liberacion = (datetime.now() + timedelta(days=90)).strftime('%d/%m/%Y')
+                    cantidad_acciones = round(max_por_accion / fila["Precio Actual"], 4)
+                    
+                    posiciones_compradas.append({
+                        "Ticker": fila["Ticker"],
+                        "Acciones": cantidad_acciones,
+                        "Precio Entrada Base": fila["Precio Actual"],
+                        "Precio Entrada": f"{fila['Precio Actual']:.2f} €",
+                        "Crecimiento Business": f"🚀 {fila['Crecimiento Anual']:.1f}%",
+                        "Potencial Estimado": f"{fila['Potencial Real']:.1f}%",
+                        "Ratio R:B": fila["Ratio R:B"],
+                        "Dividendo": fila["Dividendo"],
+                        "Volumen H.F.": fila["Volumen Institucional"],
+                        "Capital Invertido Base": max_por_accion,
+                        "Capital Invertido": f"{max_por_accion:.2f} €",
+                        "Fecha Compra": fecha_compra,
+                        "Candado": f"🔒 {fecha_liberacion}"
+                    })
                 
-                fecha_compra = datetime.now().strftime('%d/%m/%Y')
-                fecha_liberacion = (datetime.now() + timedelta(days=90)).strftime('%d/%m/%Y')
-                cantidad_acciones = round(max_por_accion / fila["Precio Actual"], 4)
-                
-                posiciones_compradas.append({
-                    "Ticker": fila["Ticker"],
-                    "Acciones": cantidad_acciones,
-                    "Precio Entrada Base": fila["Precio Actual"],
-                    "Precio Entrada": f"{fila['Precio Actual']:.2f} €",
-                    "Crecimiento Business": f"🚀 {fila['Crecimiento Anual']:.1f}%",
-                    "Potencial Estimado": f"{fila['Potencial Real']:.1f}%",
-                    "Ratio R:B": fila["Ratio R:B"],
-                    "Dividendo": fila["Dividendo"],
-                    "Volumen H.F.": fila["Volumen Institucional"],
-                    "Capital Invertido Base": max_por_accion,
-                    "Capital Invertido": f"{max_por_accion:.2f} €",
-                    "Fecha Compra": fecha_compra,
-                    "Candado": f"🔒 {fecha_liberacion}"
-                })
-            
-            st.session_state.cartera_compras = pd.DataFrame(posiciones_compradas)
-            st.session_state.cartera_compras.to_csv(ARCHIVO_CARTERA, index=False)
+                st.session_state.cartera_compras = pd.DataFrame(posiciones_compradas)
+                st.session_state.cartera_compras.to_csv(ARCHIVO_CARTERA, index=False)
+        else:
+            st.error("La lista seleccionada para el bot no contiene tickers.")
 
     df_mostrar = st.session_state.cartera_compras.copy()
     caja_libre = 30000.0
@@ -319,78 +328,81 @@ with pestaña2:
         tickers_lista = st.session_state.listas_guardadas[lista_sel]
         datos_lista = []
         
-        with st.spinner("Sincronizando métricas avanzadas en vivo..."):
-            tickers_string = " ".join(tickers_lista)
-            try:
-                datos_globales_p2 = yf.download(tickers_string, period="1y", group_by="ticker", progress=False, actions=True)
-            except:
-                datos_globales_p2 = pd.DataFrame()
-
-            for tick in tickers_lista:
+        if tickers_lista:
+            with st.spinner("Sincronizando métricas avanzadas en vivo..."):
+                tickers_string = " ".join(tickers_lista)
                 try:
-                    if tick in datos_globales_p2.columns.levels[0]:
-                        h = datos_globales_p2[tick].dropna()
-                    else:
-                        t_obj = yf.Ticker(tick)
-                        h = t_obj.history(period="1y", actions=True)
-                    
-                    if not h.empty and len(h) >= 50:
-                        p_actual = h['Close'].iloc[-1]
-                        p_media = h['Close'].iloc[-50:].mean()
-                        p_minimo = h['Close'].iloc[-50:].min()
-                        
-                        target_val, div_yield = obtener_info_segura(tick)
-                        
-                        if div_yield is None or div_yield == 0:
-                            try:
-                                if 'Dividends' in h.columns:
-                                    dividendos_anuales = h['Dividends'].sum()
-                                    if dividendos_anuales > 0 and p_actual > 0:
-                                        div_yield = dividendos_anuales / p_actual
-                            except:
-                                div_yield = 0
-                        
-                        precio_hace_60d = h['Close'].iloc[-60] if len(h) >= 60 else h['Close'].iloc[0]
-                        crec_pct = ((p_actual - precio_hace_60d) / precio_hace_60d) * 100
-                        
-                        if target_val is None or target_val == 0:
-                            potencial_val = max(20.0, crec_pct * 1.12)
-                            target_val = p_actual * (1 + (potencial_val/100))
-                        else:
-                            potencial_val = ((target_val - p_actual) / p_actual) * 100
-                        
-                        riesgo_suelo = ((p_actual - p_minimo) / p_actual) * 100
-                        if riesgo_suelo <= 0: riesgo_suelo = 0.5
-                        ratio_rb = potencial_val / riesgo_suelo
-                        
-                        div_txt = "❌ 0%" if (div_yield is None or div_yield == 0) else f"💰 {div_yield * 100:.2f}%"
-                        
-                        if p_actual > p_media and potencial_val >= 20.0:
-                            sem_lista = "🟢 COMPRAR"
-                            explicacion = "Estructura alcista y excelente margen de subida real."
-                        elif potencial_val >= 10.0:
-                            sem_lista = "🟡 ACUMULAR"
-                            explicacion = "Consolidando niveles. Atractivo para medio plazo."
-                        else:
-                            sem_lista = "🔴 ESPERAR"
-                            explicacion = "Precio objetivo ajustado o sin margen de seguridad dinámico."
-                            
-                        datos_lista.append({
-                            "Ticker": tick, 
-                            "Precio Actual": f"{p_actual:.2f} €", 
-                            "Precio Objetivo Real": f"{target_val:.2f} €",
-                            "Potencial Estimado": f"{potencial_val:.1f}%",
-                            "Ratio R:B (1 : X)": f"1 : {ratio_rb:.1f}",
-                            "Rendimiento Dividendo": div_txt,
-                            "Estrategia": sem_lista,
-                            "Nota Técnico": explicacion
-                        })
+                    datos_globales_p2 = yf.download(tickers_string, period="1y", group_by="ticker", progress=False, actions=True)
                 except:
-                    pass
-                
-        if datos_lista:
-            df_lista_final = pd.DataFrame(datos_lista)
-            st.dataframe(df_lista_final, use_container_width=True)
+                    datos_globales_p2 = pd.DataFrame()
+
+                for tick in tickers_lista:
+                    try:
+                        if tick in datos_globales_p2.columns.levels[0]:
+                            h = datos_globales_p2[tick].dropna()
+                        else:
+                            t_obj = yf.Ticker(tick)
+                            h = t_obj.history(period="1y", actions=True)
+                        
+                        if not h.empty and len(h) >= 50:
+                            p_actual = h['Close'].iloc[-1]
+                            p_media = h['Close'].iloc[-50:].mean()
+                            p_minimo = h['Close'].iloc[-50:].min()
+                            
+                            target_val, div_yield = obtener_info_segura(tick)
+                            
+                            if div_yield is None or div_yield == 0:
+                                try:
+                                    if 'Dividends' in h.columns:
+                                        dividendos_anuales = h['Dividends'].sum()
+                                        if dividendos_anuales > 0 and p_actual > 0:
+                                            div_yield = dividendos_anuales / p_actual
+                                except:
+                                    div_yield = 0
+                            
+                            precio_hace_60d = h['Close'].iloc[-60] if len(h) >= 60 else h['Close'].iloc[0]
+                            crec_pct = ((p_actual - precio_hace_60d) / precio_hace_60d) * 100
+                            
+                            if target_val is None or target_val == 0:
+                                potencial_val = max(20.0, crec_pct * 1.12)
+                                target_val = p_actual * (1 + (potencial_val/100))
+                            else:
+                                potencial_val = ((target_val - p_actual) / p_actual) * 100
+                            
+                            riesgo_suelo = ((p_actual - p_minimo) / p_actual) * 100
+                            if riesgo_suelo <= 0: riesgo_suelo = 0.5
+                            ratio_rb = potencial_val / riesgo_suelo
+                            
+                            div_txt = "❌ 0%" if (div_yield is None or div_yield == 0) else f"💰 {div_yield * 100:.2f}%"
+                            
+                            if p_actual > p_media and potencial_val >= 20.0:
+                                sem_lista = "🟢 COMPRAR"
+                                explicacion = "Estructura alcista y excelente margen de subida real."
+                            elif potencial_val >= 10.0:
+                                sem_lista = "🟡 ACUMULAR"
+                                explicacion = "Consolidando niveles. Atractivo para medio plazo."
+                            else:
+                                sem_lista = "🔴 ESPERAR"
+                                explicacion = "Precio objetivo ajustado o sin margen de seguridad dinámico."
+                                
+                            datos_lista.append({
+                                "Ticker": tick, 
+                                "Precio Actual": f"{p_actual:.2f} €", 
+                                "Precio Objetivo Real": f"{target_val:.2f} €",
+                                "Potencial Estimado": f"{potencial_val:.1f}%",
+                                "Ratio R:B (1 : X)": f"1 : {ratio_rb:.1f}",
+                                "Rendimiento Dividendo": div_txt,
+                                "Estrategia": sem_lista,
+                                "Nota Técnico": explicacion
+                            })
+                    except:
+                        pass
+                    
+            if datos_lista:
+                df_lista_final = pd.DataFrame(datos_lista)
+                st.dataframe(df_lista_final, use_container_width=True)
+        else:
+            st.info("Esta lista está vacía. Añádele activos en la Pestaña 3.")
 
     st.write("---")
     st.write("### 🔍 Opción B: Ficha de Inteligencia Estructural Individual")
@@ -455,54 +467,100 @@ with pestaña2:
 with pestaña3:
     st.subheader("⚙️ Panel de Edición y Control de Listas Pregrabadas")
     st.write("Gestiona el universo de activos que lee el Bot y el Analizador Avanzado de manera persistente.")
+    st.write("---")
 
-    lista_a_revisar = st.selectbox("Selecciona una lista para gestionar:", list(st.session_state.listas_guardadas.keys()))
+    # --- SECCIÓN A: PANEL EXPLICITO PARA CREAR LISTAS ---
+    st.write("### 🔑 Panel 1: Crear Nueva Lista Personalizada")
+    
+    # Usamos un Formulario dedicado para aislar el botón de envío y forzar el refresco limpio
+    with st.form("formulario_crear_lista", clear_on_submit=True):
+        nombre_nueva_lista = st.text_input("Escribe el nombre de tu nueva lista (Ej: Crypto_Watch, Speculative):").strip()
+        boton_enviar_lista = st.form_submit_button("✨ Confirmar y Registrar Lista")
+        
+        if boton_enviar_lista:
+            if nombre_nueva_lista:
+                if nombre_nueva_lista not in st.session_state.listas_guardadas:
+                    # Guardar en memoria de sesión
+                    st.session_state.listas_guardadas[nombre_nueva_lista] = []
+                    
+                    # Persistencia en JSON físico
+                    with open(ARCHIVO_LISTAS, "w") as f:
+                        json.dump(st.session_state.listas_guardadas, f)
+                        
+                    st.success(f"¡Éxito! Lista '{nombre_nueva_lista}' agregada de forma permanente.")
+                    st.rerun()
+                else:
+                    st.warning(f"La lista '{nombre_nueva_lista}' ya existe en el sistema.")
+            else:
+                st.error("No puedes registrar una lista con el nombre vacío.")
+
+    st.write("---")
+
+    # --- SECCIÓN B: PANEL PARA BORRAR LISTAS COMPLETAS ---
+    st.write("### 🗑️ Panel 2: Eliminar una Lista Completa")
+    col_del_l1, col_del_l2 = st.columns([3, 1])
+    
+    with col_del_l1:
+        lista_a_eliminar = st.selectbox("Selecciona la lista que quieres destruir para siempre:", list(st.session_state.listas_guardadas.keys()), key="select_borrar_lista_completa")
+    with col_del_l2:
+        st.write("##") # Espaciador
+        if st.button("💥 Destruir Lista"):
+            if lista_a_eliminar:
+                del st.session_state.listas_guardadas[lista_a_eliminar]
+                
+                # Actualizar el JSON físico
+                with open(ARCHIVO_LISTAS, "w") as f:
+                    json.dump(st.session_state.listas_guardadas, f)
+                    
+                st.success(f"Lista '{lista_a_eliminar}' eliminada del sistema.")
+                st.rerun()
+
+    st.write("---")
+    
+    # --- SECCIÓN C: GESTIÓN DE TICKERS INTERNOS ---
+    st.write("### 📊 Panel 3: Administrar Tickers de una Lista")
+    lista_a_revisar = st.selectbox("Elige la lista que deseas editar por dentro:", list(st.session_state.listas_guardadas.keys()), key="select_lista_valores")
     
     if lista_a_revisar:
         tickers_actuales = st.session_state.listas_guardadas[lista_a_revisar]
         
-        # --- SUB-PANEL: AÑADIR NUEVO TICKER ---
-        st.write("#### ➕ Añadir Activo a esta Lista")
+        # Insertar Ticker
+        st.write("#### ➕ Añadir Activo")
         c_add1, c_add2 = st.columns([3, 1])
         with c_add1:
             nuevo_ticker = st.text_input("Introduce el Ticker oficial (Ej: RKLB, MSFT, INTC):", key="txt_nuevo_ticker").upper().strip()
         with c_add2:
-            st.write("##") # Espaciador para alinear el botón
+            st.write("##")
             if st.button("📥 Insertar Activo"):
                 if nuevo_ticker and nuevo_ticker not in tickers_actuales:
                     tickers_actuales.append(nuevo_ticker)
                     st.session_state.listas_guardadas[lista_a_revisar] = tickers_actuales
-                    
-                    # Guardar físicamente en el JSON
                     with open(ARCHIVO_LISTAS, "w") as f:
                         json.dump(st.session_state.listas_guardadas, f)
-                    
-                    st.success(f"¡{nuevo_ticker} añadido con éxito a '{lista_a_revisar}'!")
+                    st.success(f"¡{nuevo_ticker} añadido a '{lista_a_revisar}'!")
                     st.rerun()
                 elif nuevo_ticker in tickers_actuales:
-                    st.warning(f"El activo {nuevo_ticker} ya forma parte de esta lista.")
+                    st.warning(f"El activo {nuevo_ticker} ya está en la lista.")
 
-        # --- SUB-PANEL: ELIMINAR TICKER ---
-        st.write("#### ➖ Eliminar Activo de esta Lista")
+        # Borrar Ticker
+        st.write("#### ➖ Eliminar Activo")
         c_del1, c_del2 = st.columns([3, 1])
         with c_del1:
             ticker_a_borrar = st.selectbox("Selecciona el activo que deseas retirar:", ["Ninguno"] + tickers_actuales)
         with c_del2:
-            st.write("##") # Espaciador
+            st.write("##")
             if st.button("🗑️ Borrar Activo"):
                 if ticker_a_borrar != "Ninguno":
                     tickers_actuales.remove(ticker_a_borrar)
                     st.session_state.listas_guardadas[lista_a_revisar] = tickers_actuales
-                    
-                    # Guardar físicamente en el JSON
                     with open(ARCHIVO_LISTAS, "w") as f:
                         json.dump(st.session_state.listas_guardadas, f)
-                        
-                    st.success(f"¡{ticker_a_borrar} eliminado de '{lista_a_revisar}'!")
+                    st.success(f"¡{ticker_a_borrar} retirado!")
                     st.rerun()
 
-        st.write("---")
-        st.write(f"### 📋 Vista Actual Completa: {lista_a_revisar} ({len(tickers_actuales)} activos)")
-        # Mostramos la tabla interactiva y limpia de la lista
-        df_lista_ui = pd.DataFrame(tickers_actuales, columns=["Ticker Asociado"])
-        st.dataframe(df_lista_ui, use_container_width=True)
+        st.write(f"##### 📋 Vista de Activos Guardados en '{lista_a_revisar}' ({len(tickers_actuales)} activos):")
+        if tickers_actuales:
+            df_lista_ui = pd.DataFrame(tickers_actuales, columns=["Ticker Asociado"])
+            st.dataframe(df_lista_ui, use_container_width=True)
+        else:
+            st.info("Esta lista no contiene ningún ticker todavía.")
