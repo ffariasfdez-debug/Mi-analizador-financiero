@@ -554,5 +554,3 @@ with pestaña3:
         if tickers_actuales:
             df_lista_ui = pd.DataFrame(tickers_actuales, columns=["Ticker Asociado"])
             st.dataframe(df_lista_ui, use_container_width=True)
-        else:
-            st.info("Esta lista no contiene ningún activo.")
