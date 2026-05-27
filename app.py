@@ -6,15 +6,11 @@ import pytz
 import os
 import json
 
-# 1. Configuración inicial
+# Configuración inicial
 st.set_page_config(page_title="Centro de Mando Financiero", layout="wide")
 
 ARCHIVO_CARTERA = "cartera_guardada.csv"
 ARCHIVO_LISTAS = "listas_permanentes.json"
-
-st.title("🎛️ Centro de Mando Financiero Pro")
-st.write(f"**Estado:** Conectado | {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-st.write("---")
 
 # --- LÓGICA DE PERSISTENCIA ---
 if "listas_guardadas" not in st.session_state:
@@ -23,65 +19,63 @@ if "listas_guardadas" not in st.session_state:
             st.session_state.listas_guardadas = json.load(f)
     else:
         st.session_state.listas_guardadas = {
-            "Semiconductores": ["ASM.AS", "NVDA", "AMD"],
-            "Robótica": ["ISRG", "DE", "ROK"]
+            "Semiconductores": ["ASM.AS", "NVDA", "AMD", "ASML"],
+            "Robótica": ["ISRG", "DE", "ROK", "CGNX"]
         }
 
-if "cartera_compras" not in st.session_state:
-    if os.path.exists(ARCHIVO_CARTERA):
-        st.session_state.cartera_compras = pd.read_csv(ARCHIVO_CARTERA)
-    else:
-        st.session_state.cartera_compras = pd.DataFrame()
-
-# --- FUNCIONES ---
-def identificar_mercado_y_divisa(ticker):
+# --- FUNCIONES DE MERCADO ---
+def identificar_mercado(ticker):
     t = str(ticker).upper()
     if t.endswith(".AS"): return "Euronext Ámsterdam", "EUR (€)"
     if t.endswith(".DE"): return "Xetra Alemania", "EUR (€)"
     if t.endswith(".MC"): return "Bolsa Madrid", "EUR (€)"
     return "Wall Street (EE.UU.)", "USD ($)"
 
-# --- PESTAÑAS ---
-pestaña1, pestaña2, pestaña3 = st.tabs(["🤖 Bot", "🔍 Análisis", "⚙️ Listas"])
+def obtener_datos(tickers_list):
+    """Obtiene datos de Yahoo Finance para una lista de tickers."""
+    datos = yf.download(" ".join(tickers_list), period="1y", group_by="ticker", progress=False)
+    return datos
 
-with pestaña1:
-    st.subheader("🤖 Bot Masivo")
+# --- INTERFAZ ---
+st.title("🎛️ Centro de Mando Financiero Pro")
+
+tab1, tab2, tab3 = st.tabs(["🤖 Bot Masivo", "🔍 Analizador Técnico", "⚙️ Configuración"])
+
+with tab1:
+    st.subheader("🤖 Ejecución de Embudo")
+    cap = st.number_input("Capital por operación (€):", 100, 5000, 1000)
     
-    # Parámetros simplificados
-    max_por_accion = st.number_input("Capital por operación (€):", 100, 5000, 1000)
-    tope_semanal = st.slider("Tope semanal (€):", 1000, 30000, 10000)
-    
-    if st.button("🔄 Ejecutar"):
-        nombre_lista = list(st.session_state.listas_guardadas.keys())[0]
-        lista_tickers = st.session_state.listas_guardadas[nombre_lista]
+    if st.button("🔄 Ejecutar Análisis"):
+        lista_activos = st.session_state.listas_guardadas.get(list(st.session_state.listas_guardadas.keys())[0], [])
         
-        posiciones = []
-        for tick in lista_tickers:
-            # Aquí está la línea 237 corregida de forma compacta
-            mercado, divisa = identificar_mercado_y_divisa(tick)
-            
-            # Simulamos un precio y guardamos
-            posiciones.append({
+        # Procesamiento
+        resultados = []
+        for tick in lista_activos:
+            mercado, divisa = identificar_mercado(tick)
+            # Aquí podrías añadir la lógica de medias móviles (SMA 50/200)
+            resultados.append({
                 "Ticker": tick,
-                "Plaza Cotización": mercado,
+                "Plaza": mercado,
                 "Divisa": divisa,
-                "Capital Invertido Base": max_por_accion
+                "Inversión": cap
             })
             
-        st.session_state.cartera_compras = pd.DataFrame(posiciones)
-        st.session_state.cartera_compras.to_csv(ARCHIVO_CARTERA, index=False)
+        st.session_state.cartera_compras = pd.DataFrame(resultados)
+        st.success("Análisis completado")
+        st.dataframe(st.session_state.cartera_compras)
+
+with tab2:
+    st.subheader("🔍 Análisis Estructural")
+    # Aquí incluirías el gráfico de líneas y las medias móviles
+    st.write("Selecciona un activo para ver su estructura técnica.")
+
+with tab3:
+    st.subheader("⚙️ Configuración de Listas")
+    # Panel de edición de tickers
+    lista_edit = st.selectbox("Lista a editar:", list(st.session_state.listas_guardadas.keys()))
+    nuevo_t = st.text_input("Añadir ticker:")
+    if st.button("Guardar"):
+        st.session_state.listas_guardadas[lista_edit].append(nuevo_t.upper())
+        with open(ARCHIVO_LISTAS, "w") as f:
+            json.dump(st.session_state.listas_guardadas, f)
         st.rerun()
-
-    # --- RENDERIZADO SEGURO ---
-    if not st.session_state.cartera_compras.empty:
-        df = st.session_state.cartera_compras
-        # Filtro de columnas para que no rompa si el CSV es antiguo
-        columnas_ideales = ["Ticker", "Plaza Cotización", "Divisa", "Capital Invertido Base"]
-        cols = [c for c in columnas_ideales if c in df.columns]
-        st.dataframe(df[cols], use_container_width=True)
-
-with pestaña2:
-    st.write("Analizador Técnico...")
-
-with pestaña3:
-    st.write("Configuración de Listas...")
