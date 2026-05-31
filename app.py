@@ -168,14 +168,24 @@ def calcular_tendencia_volumen(historial):
     except:
         return "➡️ ESTABLE", 0
 
-def calcular_interes_institucional(volumen_hf, pct_institucional, tendencia_vol):
+def calcular_interes_institucional(volumen_hf, pct_institucional, tendencia_vol, market_cap=None):
     puntos = 0
+
+    # Volumen alto = +1 punto
     if volumen_hf == "🔥 ALTO":
         puntos += 1
-    if pct_institucional is not None and pct_institucional > 0.60:
+
+    # Institucional > 50% (bajado de 60% porque Yahoo ya no da este dato fiable)
+    if pct_institucional is not None and pct_institucional > 0.50:
         puntos += 1
+    # Fallback: si no hay dato institucional pero el market cap es grande (>10B), asumimos interés institucional
+    elif pct_institucional is None and market_cap is not None and market_cap > 10e9:
+        puntos += 1
+
+    # Volumen creciendo = +1 punto
     if "CRECIENDO" in tendencia_vol:
         puntos += 1
+
     if puntos >= 3:
         return "🎯 FUERTE"
     elif puntos >= 2:
@@ -610,7 +620,7 @@ with pestaña1:
                     
                     fuerza_volumen = "🔥 ALTO" if volumen_actual > (media_volumen_20 * 1.15) else "🟢 NORMAL"
                     tendencia_vol, _ = calcular_tendencia_volumen(historial)
-                    interes_inst = calcular_interes_institucional(fuerza_volumen, pct_inst, tendencia_vol)
+                    interes_inst = calcular_interes_institucional(fuerza_volumen, pct_inst, tendencia_vol, market_cap)
                     
                     sym = simbolo_moneda(moneda_detectada)
                     
@@ -863,7 +873,7 @@ with pestaña2:
                         
                         tendencia_vol, _ = calcular_tendencia_volumen(h)
                         volumen_hf = "🔥 ALTO" if h['Volume'].iloc[-1] > h['Volume'].iloc[-21:-1].mean() * 1.15 else "🟢 NORMAL"
-                        interes_inst = calcular_interes_institucional(volumen_hf, pct_inst, tendencia_vol)
+                        interes_inst = calcular_interes_institucional(volumen_hf, pct_inst, tendencia_vol, market_cap)
                         
                         sym = simbolo_moneda(moneda)
                         pct_inst_txt = f"{pct_inst*100:.1f}%" if pct_inst else "N/A"
