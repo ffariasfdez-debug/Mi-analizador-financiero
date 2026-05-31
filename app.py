@@ -24,13 +24,22 @@ st.write("---")
 # ============================================================================
 
 def detectar_moneda(ticker):
+    """
+    Detecta la moneda de un ticker por su sufijo o consultando yfinance.
+    """
     ticker_upper = ticker.upper().strip()
+    
+    # Sufijos europeos = EUR
     sufijos_eur = ['.AS', '.PA', '.DE', '.BR', '.MI', '.MC', '.ST', '.HE', '.CO', '.OL', '.VI', '.LS', '.IR']
     for sufijo in sufijos_eur:
         if ticker_upper.endswith(sufijo):
             return 'EUR'
+    
+    # UK = GBP
     if ticker_upper.endswith('.L') or ticker_upper.endswith('.LN'):
         return 'GBP'
+    
+    # Consultar yfinance para el resto
     try:
         t = yf.Ticker(ticker)
         info = t.info
@@ -40,6 +49,7 @@ def detectar_moneda(ticker):
                 return moneda
     except:
         pass
+    
     return 'USD'
 
 def simbolo_moneda(moneda):
@@ -78,6 +88,7 @@ def descargar_datos_seguro(tickers, period="1y", interval=None, actions=False):
     else:
         tickers_str = tickers
         tickers = [tickers]
+    
     try:
         kwargs = {"period": period, "progress": False, "group_by": "ticker"}
         if interval:
@@ -85,6 +96,7 @@ def descargar_datos_seguro(tickers, period="1y", interval=None, actions=False):
         if actions:
             kwargs["actions"] = True
         datos = yf.download(tickers_str, **kwargs)
+        
         if len(tickers) == 1 and isinstance(datos.columns, pd.Index):
             ticker = tickers[0]
             datos.columns = pd.MultiIndex.from_product([[ticker], datos.columns])
@@ -103,6 +115,7 @@ def extraer_historial(datos_globales, ticker, period="1y"):
                     return historial
     except:
         pass
+    
     try:
         t = yf.Ticker(ticker)
         historial = t.history(period=period, actions=True)
@@ -122,6 +135,7 @@ def extraer_precio_actual(datos_minuto, ticker, historial):
                         return float(ultimo)
     except:
         pass
+    
     try:
         if not historial.empty:
             precio = historial['Close'].iloc[-1]
@@ -129,6 +143,7 @@ def extraer_precio_actual(datos_minuto, ticker, historial):
                 return float(precio)
     except:
         pass
+    
     return None
 
 def calcular_dividend_yield(historial, precio_actual, ticker):
@@ -138,6 +153,7 @@ def calcular_dividend_yield(historial, precio_actual, ticker):
             return dy
     except:
         pass
+    
     try:
         if 'Dividends' in historial.columns:
             dividendos_totales = historial['Dividends'].sum()
@@ -145,6 +161,7 @@ def calcular_dividend_yield(historial, precio_actual, ticker):
                 return dividendos_totales / precio_actual
     except:
         pass
+    
     return 0
 
 def formatear_dividendo(dy):
@@ -172,19 +189,23 @@ def guardar_cartera():
 def regenerar_textos_moneda(df):
     if df.empty:
         return df
+    
     for idx in df.index:
         ticker = str(df.loc[idx, 'Ticker'])
         moneda = detectar_moneda(ticker)
         df.loc[idx, 'Moneda'] = moneda
         sym = simbolo_moneda(moneda)
+        
         if 'Precio Entrada Base' in df.columns:
             precio = df.loc[idx, 'Precio Entrada Base']
             if pd.notna(precio):
                 df.loc[idx, 'Precio Entrada'] = f"{float(precio):.2f} {sym}"
+        
         if 'Capital Invertido Base' in df.columns:
             capital = df.loc[idx, 'Capital Invertido Base']
             if pd.notna(capital):
                 df.loc[idx, 'Capital Invertido'] = f"{float(capital):.2f} {sym}"
+    
     return df
 
 # ============================================================================
@@ -199,6 +220,7 @@ if "listas_guardadas" not in st.session_state:
         except:
             if os.path.exists(ARCHIVO_LISTAS):
                 os.remove(ARCHIVO_LISTAS)
+    
     if "listas_guardadas" not in st.session_state or not isinstance(st.session_state.listas_guardadas, dict):
         st.session_state.listas_guardadas = {
             "Semiconductores Premium": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "AVGO", "MRVL", "TSM"],
@@ -461,7 +483,7 @@ with pestaña1:
             status_text.empty()
 
     # ============================================================================
-    # MOSTRAR CARTERA CON P&L - CORREGIDO PARA MERCADO CERRADO
+    # MOSTRAR CARTERA CON P&L - DESCARGAS INDIVIDUALES PARA MÁXIMA FIABILIDAD
     # ============================================================================
     df_mostrar = st.session_state.cartera_compras.copy()
     caja_libre = 30000.0
@@ -475,21 +497,34 @@ with pestaña1:
 
         lista_activos_cartera = df_mostrar["Ticker"].tolist()
         
-        # 1. Intentar datos intradía (mercado abierto)
-        with st.spinner("🔄 Actualizando precios..."):
-            try:
-                cotizaciones_vivas = descargar_datos_seguro(lista_activos_cartera, period="1d", interval="1m")
-            except:
-                cotizaciones_vivas = pd.DataFrame()
-
-        # 2. Si no hay intradía (mercado cerrado), descargar historial diario
-        historial_diario = pd.DataFrame()
-        if cotizaciones_vivas.empty:
-            with st.spinner("📅 Mercado cerrado. Cargando últimos precios de cierre..."):
+        # DESCARGAR PRECIOS UNO POR UNO (más fiable que en grupo)
+        precios_vivos = {}
+        
+        with st.spinner("🔄 Obteniendo precios actualizados..."):
+            for tick in lista_activos_cartera:
                 try:
-                    historial_diario = descargar_datos_seguro(lista_activos_cartera, period="5d", interval="1d")
+                    t = yf.Ticker(tick)
+                    # Intentar con 5 días
+                    hist = t.history(period="5d", interval="1d")
+                    if not hist.empty and len(hist) > 0:
+                        ultimo = float(hist['Close'].iloc[-1])
+                        if pd.notna(ultimo) and ultimo > 0:
+                            precios_vivos[tick] = ultimo
+                            continue
+                    # Si falla, intentar con 1 mes
+                    hist = t.history(period="1mo", interval="1d")
+                    if not hist.empty and len(hist) > 0:
+                        ultimo = float(hist['Close'].iloc[-1])
+                        if pd.notna(ultimo) and ultimo > 0:
+                            precios_vivos[tick] = ultimo
                 except:
-                    historial_diario = pd.DataFrame()
+                    pass
+        
+        # Debug info
+        if precios_vivos:
+            st.write(f"✅ Precios obtenidos: {len(precios_vivos)}/{len(lista_activos_cartera)}")
+        else:
+            st.warning("⚠️ No se pudieron obtener precios en vivo.")
 
         lista_pnl_formateada = []
         for _, fila in df_mostrar.iterrows():
@@ -498,33 +533,12 @@ with pestaña1:
             n_acciones = fila["Acciones"]
             moneda = fila.get("Moneda", "USD")
             
-            # Estrategia de extracción de precio con múltiples fallbacks
-            p_live = None
-            
-            # Fallback 1: Datos intradía
-            if not cotizaciones_vivas.empty:
-                p_live = extraer_precio_actual(cotizaciones_vivas, t_actual, pd.DataFrame())
-            
-            # Fallback 2: Historial diario
-            if p_live is None and not historial_diario.empty:
-                p_live = extraer_precio_actual(historial_diario, t_actual, pd.DataFrame())
-            
-            # Fallback 3: Descarga individual del ticker
-            if p_live is None:
-                try:
-                    t = yf.Ticker(t_actual)
-                    hist = t.history(period="5d")
-                    if not hist.empty:
-                        p_live = float(hist['Close'].iloc[-1])
-                except:
-                    pass
-            
-            # Fallback 4: Usar precio de entrada
-            if p_live is None:
-                p_live = p_entrada
+            # Usar precio descargado o fallback a precio de entrada
+            p_live = precios_vivos.get(t_actual, p_entrada)
 
             ganancia_valor = (p_live - p_entrada) * n_acciones
             ganancia_pct = ((p_live - p_entrada) / p_entrada) * 100 if p_entrada > 0 else 0
+
             lista_pnl_formateada.append(formatear_pnl(ganancia_valor, ganancia_pct, moneda))
 
         df_mostrar["Rendimiento Actual (P&L)"] = lista_pnl_formateada
