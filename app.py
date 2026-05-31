@@ -886,27 +886,19 @@ with pestaña2:
 
                     # --- GRÁFICO CON MEDIAS ---
                     st.write("#### 📊 Evolución del Precio con Medias Móviles")
-                    import matplotlib.pyplot as plt
-                    fig, ax = plt.subplots(figsize=(12, 5))
 
                     # Calcular medias móviles
                     h['MA50'] = h['Close'].rolling(window=50).mean()
                     h['MA200'] = h['Close'].rolling(window=200).mean()
 
-                    # Plot
-                    ax.plot(h.index, h['Close'], label=f'{tick} Precio', color='#1f77b4', linewidth=1.5)
-                    ax.plot(h.index, h['MA50'], label='Media 50d', color='orange', linewidth=1.2, linestyle='--')
-                    ax.plot(h.index, h['MA200'], label='Media 200d', color='red', linewidth=1.2, linestyle='--')
+                    # Preparar datos para el gráfico
+                    chart_data = pd.DataFrame({
+                        'Precio': h['Close'],
+                        'Media 50d': h['MA50'],
+                        'Media 200d': h['MA200']
+                    })
 
-                    ax.set_title(f'{tick} - Último año', fontsize=14, fontweight='bold')
-                    ax.set_xlabel('Fecha')
-                    ax.set_ylabel(f'Precio ({sym})')
-                    ax.legend(loc='upper left')
-                    ax.grid(True, alpha=0.3)
-                    plt.xticks(rotation=45)
-                    plt.tight_layout()
-                    st.pyplot(fig)
-                    plt.close()
+                    st.line_chart(chart_data, use_container_width=True)
 
                     # --- MÉTRICAS EN COLUMNAS ---
                     st.write("#### 📋 Métricas Clave")
