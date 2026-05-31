@@ -196,33 +196,20 @@ def calcular_interes_institucional(volumen_hf, pct_institucional, tendencia_vol,
 def generar_veredicto(fila):
     """
     Genera un veredicto contextual para cada acción basado en TODAS sus métricas.
-    ROBUSTO: maneja diferentes nombres de columnas y tipos de datos.
+    RECALCULA el interés institucional en tiempo real (no usa el valor guardado).
     """
     try:
-        # Obtener valores con manejo seguro de columnas
         ticker = str(fila.get('Ticker', 'N/A'))
-        
-        # Potencial - probar diferentes nombres de columna
+
+        # Potencial
         potencial_raw = fila.get('Potencial 4Años', fila.get('Potencial Estimado', '0%'))
         if isinstance(potencial_raw, str):
             potencial = float(potencial_raw.replace('%', '').strip()) if '%' in potencial_raw else 0
         else:
             potencial = float(potencial_raw) if pd.notna(potencial_raw) else 0
-        
+
         # Ratio R:B
         ratio_rb = str(fila.get('Ratio R:B', '1 : 1.0'))
-        
-        # Interés institucional
-        interes = str(fila.get('Interés Inst.', fila.get('Interes Inst.', '🎯 DÉBIL')))
-        
-        # Crecimiento
-        crecimiento_raw = fila.get('Crecimiento Business', '0%')
-        if isinstance(crecimiento_raw, str):
-            crecimiento = float(crecimiento_raw.replace('🚀 ', '').replace('%', '').strip()) if '%' in crecimiento_raw else 0
-        else:
-            crecimiento = float(crecimiento_raw) if pd.notna(crecimiento_raw) else 0
-        
-        # Extraer ratio numérico de forma segura
         rb_valor = 1.0
         try:
             if ':' in ratio_rb:
@@ -231,9 +218,29 @@ def generar_veredicto(fila):
                     rb_valor = float(partes[1].strip().split()[0])
         except:
             rb_valor = 1.0
-        
+
+        # RECALCULAR interés institucional en tiempo real
+        try:
+            target, dy, moneda, pct_inst, num_inst, market_cap, sector = obtener_info_segura(ticker)
+            # Usar market cap como proxy si no hay dato institucional
+            if pct_inst is not None and pct_inst > 0.50:
+                interes_txt = "instituciones acumulando"
+            elif pct_inst is None and market_cap is not None and market_cap > 10e9:
+                interes_txt = "interés estable"  # Grandes caps suelen tener institucionales
+            else:
+                interes_txt = "sin respaldo institucional"
+        except:
+            interes_txt = "sin respaldo institucional"
+
+        # Crecimiento
+        crecimiento_raw = fila.get('Crecimiento Business', '0%')
+        if isinstance(crecimiento_raw, str):
+            crecimiento = float(crecimiento_raw.replace('🚀 ', '').replace('%', '').strip()) if '%' in crecimiento_raw else 0
+        else:
+            crecimiento = float(crecimiento_raw) if pd.notna(crecimiento_raw) else 0
+
         veredictos = []
-        
+
         # Análisis de potencial
         if potencial > 100:
             veredictos.append("🚀 Potencial explosivo")
@@ -243,15 +250,10 @@ def generar_veredicto(fila):
             veredictos.append("📊 Potencial moderado")
         else:
             veredictos.append("⚠️ Potencial limitado")
-        
-        # Análisis institucional
-        if "FUERTE" in interes:
-            veredictos.append("instituciones acumulando")
-        elif "MODERADO" in interes:
-            veredictos.append("interés estable")
-        else:
-            veredictos.append("sin respaldo institucional")
-        
+
+        # Análisis institucional (RECALCULADO)
+        veredictos.append(interes_txt)
+
         # Análisis riesgo/beneficio
         if rb_valor > 3:
             veredictos.append("excelente R:B")
@@ -259,7 +261,7 @@ def generar_veredicto(fila):
             veredictos.append("buen R:B")
         else:
             veredictos.append("R:B ajustado")
-        
+
         return " | ".join(veredictos)
     except Exception as e:
         return f"⚠️ Error análisis: {str(e)[:30]}"
@@ -818,8 +820,212 @@ with pestaña1:
 # ============================================================================
 with pestaña2:
     st.subheader("🔍 Analizador de Oportunidades - Horizonte 4 Años")
+
+    # --- SECCIÓN 1: ANÁLISIS INDIVIDUAL ---
+    st.write("### 📈 Análisis Individual")
+    col_input, col_btn = st.columns([3, 1])
+    with col_input:
+        ticker_individual = st.text_input("Introduce un ticker:", value="", placeholder="Ej: NVDA, AMD, ARM...", key="ticker_individual")
+    with col_btn:
+        analizar_individual = st.button("🔍 Analizar", key="btn_analizar_individual")
+
+    if analizar_individual and ticker_individual.strip():
+        tick = ticker_individual.strip().upper()
+        with st.spinner(f"Analizando {tick}..."):
+            try:
+                # Descargar datos
+                h = yf.Ticker(tick).history(period="1y")
+                if h.empty or len(h) < 200:
+                    st.error(f"No hay suficientes datos para {tick}")
+                else:
+                    p_actual = h['Close'].iloc[-1]
+                    media_50 = h['Close'].iloc[-50:].mean()
+                    media_200 = h['Close'].iloc[-200:].mean()
+                    p_minimo_50 = h['Close'].iloc[-50:].min()
+
+                    # Datos fundamentales
+                    target_val, div_yield, moneda, pct_inst, num_inst, market_cap, sector = obtener_info_segura(tick)
+                    if target_val is None:
+                        try:
+                            info = yf.Ticker(tick).info
+                            target_val = info.get('targetMedianPrice', None)
+                            div_yield = info.get('dividendYield', None)
+                            moneda = info.get('currency', detectar_moneda(tick))
+                            pct_inst = info.get('heldPercentInstitutions', None)
+                            market_cap = info.get('marketCap', None)
+                            sector = info.get('sector', None)
+                            if div_yield and div_yield > 1.0:
+                                div_yield = div_yield / 100.0
+                        except:
+                            target_val = None; div_yield = None; moneda = detectar_moneda(tick)
+                            pct_inst = None; market_cap = None; sector = None
+
+                    if div_yield is None or div_yield == 0:
+                        div_yield = calcular_dividend_yield(h, p_actual, tick)
+
+                    # Cálculos
+                    precio_60d = h['Close'].iloc[-60] if len(h) >= 60 else h['Close'].iloc[0]
+                    crec_pct = ((p_actual - precio_60d) / precio_60d) * 100
+
+                    if target_val is None or target_val == 0:
+                        potencial_val = max(20.0, crec_pct * 1.12)
+                        target_val = p_actual * (1 + potencial_val/100)
+                    else:
+                        potencial_val = ((target_val - p_actual) / p_actual) * 100
+
+                    riesgo = ((p_actual - p_minimo_50) / p_actual) * 100
+                    if riesgo <= 0:
+                        riesgo = 0.5
+                    ratio_rb = potencial_val / riesgo
+
+                    tendencia_vol, cambio_vol = calcular_tendencia_volumen(h)
+                    volumen_hf = "🔥 ALTO" if h['Volume'].iloc[-1] > h['Volume'].iloc[-21:-1].mean() * 1.15 else "🟢 NORMAL"
+                    interes_inst = calcular_interes_institucional(volumen_hf, pct_inst, tendencia_vol, market_cap)
+
+                    sym = simbolo_moneda(moneda)
+
+                    # --- GRÁFICO CON MEDIAS ---
+                    st.write("#### 📊 Evolución del Precio con Medias Móviles")
+                    import matplotlib.pyplot as plt
+                    fig, ax = plt.subplots(figsize=(12, 5))
+
+                    # Calcular medias móviles
+                    h['MA50'] = h['Close'].rolling(window=50).mean()
+                    h['MA200'] = h['Close'].rolling(window=200).mean()
+
+                    # Plot
+                    ax.plot(h.index, h['Close'], label=f'{tick} Precio', color='#1f77b4', linewidth=1.5)
+                    ax.plot(h.index, h['MA50'], label='Media 50d', color='orange', linewidth=1.2, linestyle='--')
+                    ax.plot(h.index, h['MA200'], label='Media 200d', color='red', linewidth=1.2, linestyle='--')
+
+                    ax.set_title(f'{tick} - Último año', fontsize=14, fontweight='bold')
+                    ax.set_xlabel('Fecha')
+                    ax.set_ylabel(f'Precio ({sym})')
+                    ax.legend(loc='upper left')
+                    ax.grid(True, alpha=0.3)
+                    plt.xticks(rotation=45)
+                    plt.tight_layout()
+                    st.pyplot(fig)
+                    plt.close()
+
+                    # --- MÉTRICAS EN COLUMNAS ---
+                    st.write("#### 📋 Métricas Clave")
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Precio Actual", f"{p_actual:.2f} {sym}")
+                    c2.metric("Target", f"{target_val:.2f} {sym}")
+                    c3.metric("Potencial", f"{potencial_val:.1f}%")
+                    c4.metric("Ratio R:B", f"1:{ratio_rb:.1f}")
+
+                    c5, c6, c7, c8 = st.columns(4)
+                    c5.metric("Media 50d", f"{media_50:.2f} {sym}")
+                    c6.metric("Media 200d", f"{media_200:.2f} {sym}")
+                    c7.metric("Dividendo", formatear_dividendo(div_yield))
+                    c8.metric("Market Cap", formatear_market_cap(market_cap))
+
+                    # --- SEMÁFORO DE RECOMENDACIÓN ---
+                    st.write("#### 🚦 Semáforo de Recomendación")
+
+                    # Calcular puntuación del semáforo
+                    puntos_semaforo = 0
+                    razones_verde = []
+                    razones_rojo = []
+
+                    # 1. Precio > Media 200 (tendencia alcista)
+                    if p_actual > media_200:
+                        puntos_semaforo += 1
+                        razones_verde.append("✅ Precio por encima de Media 200d")
+                    else:
+                        razones_rojo.append("❌ Precio por debajo de Media 200d")
+
+                    # 2. Precio > Media 50 (momentum corto)
+                    if p_actual > media_50:
+                        puntos_semaforo += 1
+                        razones_verde.append("✅ Precio por encima de Media 50d")
+                    else:
+                        razones_rojo.append("❌ Precio por debajo de Media 50d")
+
+                    # 3. Potencial > 50%
+                    if potencial_val > 50:
+                        puntos_semaforo += 1
+                        razones_verde.append("✅ Potencial > 50%")
+                    else:
+                        razones_rojo.append("❌ Potencial < 50%")
+
+                    # 4. Ratio R:B > 2
+                    if ratio_rb > 2:
+                        puntos_semaforo += 1
+                        razones_verde.append("✅ Excelente Ratio R:B (>2)")
+                    elif ratio_rb > 1:
+                        puntos_semaforo += 0.5
+                        razones_verde.append("⚠️ Ratio R:B aceptable (>1)")
+                    else:
+                        razones_rojo.append("❌ Ratio R:B bajo (<1)")
+
+                    # 5. Volumen saludable
+                    if volumen_hf == "🔥 ALTO":
+                        puntos_semaforo += 1
+                        razones_verde.append("✅ Volumen alto (interés real)")
+                    else:
+                        razones_rojo.append("⚠️ Volumen normal")
+
+                    # 6. Interés institucional
+                    if "FUERTE" in interes_inst or "MODERADO" in interes_inst:
+                        puntos_semaforo += 1
+                        razones_verde.append("✅ Respaldo institucional")
+                    else:
+                        razones_rojo.append("⚠️ Sin respaldo institucional claro")
+
+                    # Mostrar semáforo
+                    col_sem1, col_sem2, col_sem3 = st.columns([1, 2, 1])
+                    with col_sem2:
+                        if puntos_semaforo >= 5:
+                            st.success("## 🟢 COMPRA FUERTE")
+                            st.write(f"**Puntuación: {puntos_semaforo:.1f}/6**")
+                            st.write("Esta acción cumple la mayoría de criterios favorables.")
+                        elif puntos_semaforo >= 3:
+                            st.warning("## 🟡 COMPRA MODERADA")
+                            st.write(f"**Puntuación: {puntos_semaforo:.1f}/6**")
+                            st.write("Hay aspectos positivos pero también riesgos a considerar.")
+                        else:
+                            st.error("## 🔴 NO COMPRAR / ESPERAR")
+                            st.write(f"**Puntuación: {puntos_semaforo:.1f}/6**")
+                            st.write("Demasiados factores en contra. Mejor esperar o buscar otra oportunidad.")
+
+                    # Razones detalladas
+                    with st.expander("📋 Ver detalle de la evaluación"):
+                        st.write("**A favor:**")
+                        for r in razones_verde:
+                            st.write(r)
+                        st.write("**En contra:**")
+                        for r in razones_rojo:
+                            st.write(r)
+
+                    # --- TABLA RESUMEN ---
+                    st.write("#### 📊 Resumen del Análisis")
+                    resumen_data = {
+                        "Métrica": [
+                            "Ticker", "Sector", "Precio Actual", "Target", "Potencial", 
+                            "Ratio R:B", "Riesgo Suelo", "Dividendo", "Volumen", 
+                            "Tendencia Vol", "Interés Inst.", "Market Cap"
+                        ],
+                        "Valor": [
+                            tick, sector or "N/A", f"{p_actual:.2f} {sym}", f"{target_val:.2f} {sym}",
+                            f"{potencial_val:.1f}%", f"1:{ratio_rb:.1f}", f"{riesgo:.1f}%",
+                            formatear_dividendo(div_yield), volumen_hf, tendencia_vol,
+                            interes_inst, formatear_market_cap(market_cap)
+                        ]
+                    }
+                    st.dataframe(pd.DataFrame(resumen_data), use_container_width=True, hide_index=True)
+
+            except Exception as e:
+                st.error(f"Error analizando {tick}: {e}")
+
+    st.write("---")
+
+    # --- SECCIÓN 2: ANÁLISIS DE LISTAS ---
+    st.write("### 📋 Análisis de Listas Pregrabadas")
     lista_sel = st.selectbox("Universo a analizar:", ["Ninguna"] + list(st.session_state.listas_guardadas.keys()), key="select_lista")
-    
+
     if lista_sel != "Ninguna":
         tickers_lista = st.session_state.listas_guardadas[lista_sel]
         if tickers_lista:
@@ -828,18 +1034,18 @@ with pestaña2:
                 datos_lista = []
                 total = len(tickers_lista)
                 barra = st.progress(0)
-                
+
                 for idx, tick in enumerate(tickers_lista):
                     barra.progress(int((idx / total) * 100))
                     try:
                         h = extraer_historial(datos_globales_p2, tick)
                         if h.empty or len(h) < 50:
                             continue
-                        
+
                         p_actual = h['Close'].iloc[-1]
                         p_media_50 = h['Close'].iloc[-50:].mean()
                         p_minimo = h['Close'].iloc[-50:].min()
-                        
+
                         target_val, div_yield, moneda, pct_inst, num_inst, market_cap, sector = obtener_info_segura(tick)
                         if target_val is None:
                             try:
@@ -854,10 +1060,10 @@ with pestaña2:
                             except:
                                 target_val = None; div_yield = None; moneda = detectar_moneda(tick)
                                 pct_inst = None; market_cap = None
-                        
+
                         if div_yield is None or div_yield == 0:
                             div_yield = calcular_dividend_yield(h, p_actual, tick)
-                        
+
                         precio_60d = h['Close'].iloc[-60] if len(h) >= 60 else h['Close'].iloc[0]
                         crec_pct = ((p_actual - precio_60d) / precio_60d) * 100
                         if target_val is None or target_val == 0:
@@ -865,16 +1071,16 @@ with pestaña2:
                             target_val = p_actual * (1 + potencial_val/100)
                         else:
                             potencial_val = ((target_val - p_actual) / p_actual) * 100
-                        
+
                         riesgo = ((p_actual - p_minimo) / p_actual) * 100
                         if riesgo <= 0:
                             riesgo = 0.5
                         ratio_rb = potencial_val / riesgo
-                        
+
                         tendencia_vol, _ = calcular_tendencia_volumen(h)
                         volumen_hf = "🔥 ALTO" if h['Volume'].iloc[-1] > h['Volume'].iloc[-21:-1].mean() * 1.15 else "🟢 NORMAL"
                         interes_inst = calcular_interes_institucional(volumen_hf, pct_inst, tendencia_vol, market_cap)
-                        
+
                         sym = simbolo_moneda(moneda)
                         pct_inst_txt = f"{pct_inst*100:.1f}%" if pct_inst else "N/A"
                         mcap_txt = formatear_market_cap(market_cap)
@@ -914,9 +1120,6 @@ with pestaña2:
         else:
             st.info("Lista vacía.")
 
-# ============================================================================
-# PESTAÑA 3: CONFIGURACIÓN DE LISTAS PREGRABADAS
-# ============================================================================
 with pestaña3:
     st.subheader("⚙️ Gestión de Listas de Seguimiento")
 
