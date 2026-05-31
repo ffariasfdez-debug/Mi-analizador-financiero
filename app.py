@@ -24,22 +24,13 @@ st.write("---")
 # ============================================================================
 
 def detectar_moneda(ticker):
-    """
-    Detecta la moneda de un ticker por su sufijo o consultando yfinance.
-    """
     ticker_upper = ticker.upper().strip()
-    
-    # Sufijos europeos = EUR
     sufijos_eur = ['.AS', '.PA', '.DE', '.BR', '.MI', '.MC', '.ST', '.HE', '.CO', '.OL', '.VI', '.LS', '.IR']
     for sufijo in sufijos_eur:
         if ticker_upper.endswith(sufijo):
             return 'EUR'
-    
-    # UK = GBP
     if ticker_upper.endswith('.L') or ticker_upper.endswith('.LN'):
         return 'GBP'
-    
-    # Consultar yfinance para el resto
     try:
         t = yf.Ticker(ticker)
         info = t.info
@@ -49,7 +40,6 @@ def detectar_moneda(ticker):
                 return moneda
     except:
         pass
-    
     return 'USD'
 
 def simbolo_moneda(moneda):
@@ -88,7 +78,6 @@ def descargar_datos_seguro(tickers, period="1y", interval=None, actions=False):
     else:
         tickers_str = tickers
         tickers = [tickers]
-    
     try:
         kwargs = {"period": period, "progress": False, "group_by": "ticker"}
         if interval:
@@ -96,7 +85,6 @@ def descargar_datos_seguro(tickers, period="1y", interval=None, actions=False):
         if actions:
             kwargs["actions"] = True
         datos = yf.download(tickers_str, **kwargs)
-        
         if len(tickers) == 1 and isinstance(datos.columns, pd.Index):
             ticker = tickers[0]
             datos.columns = pd.MultiIndex.from_product([[ticker], datos.columns])
@@ -115,7 +103,6 @@ def extraer_historial(datos_globales, ticker, period="1y"):
                     return historial
     except:
         pass
-    
     try:
         t = yf.Ticker(ticker)
         historial = t.history(period=period, actions=True)
@@ -135,7 +122,6 @@ def extraer_precio_actual(datos_minuto, ticker, historial):
                         return float(ultimo)
     except:
         pass
-    
     try:
         if not historial.empty:
             precio = historial['Close'].iloc[-1]
@@ -143,7 +129,6 @@ def extraer_precio_actual(datos_minuto, ticker, historial):
                 return float(precio)
     except:
         pass
-    
     return None
 
 def calcular_dividend_yield(historial, precio_actual, ticker):
@@ -153,7 +138,6 @@ def calcular_dividend_yield(historial, precio_actual, ticker):
             return dy
     except:
         pass
-    
     try:
         if 'Dividends' in historial.columns:
             dividendos_totales = historial['Dividends'].sum()
@@ -161,7 +145,6 @@ def calcular_dividend_yield(historial, precio_actual, ticker):
                 return dividendos_totales / precio_actual
     except:
         pass
-    
     return 0
 
 def formatear_dividendo(dy):
@@ -187,31 +170,21 @@ def guardar_cartera():
         st.session_state.cartera_compras.to_csv(ARCHIVO_CARTERA, index=False)
 
 def regenerar_textos_moneda(df):
-    """
-    REGENERA los campos de texto (Precio Entrada, Capital Invertido) 
-    usando la columna Moneda y los valores base numéricos.
-    """
     if df.empty:
         return df
-    
     for idx in df.index:
         ticker = str(df.loc[idx, 'Ticker'])
         moneda = detectar_moneda(ticker)
         df.loc[idx, 'Moneda'] = moneda
         sym = simbolo_moneda(moneda)
-        
-        # Regenerar Precio Entrada
         if 'Precio Entrada Base' in df.columns:
             precio = df.loc[idx, 'Precio Entrada Base']
             if pd.notna(precio):
                 df.loc[idx, 'Precio Entrada'] = f"{float(precio):.2f} {sym}"
-        
-        # Regenerar Capital Invertido
         if 'Capital Invertido Base' in df.columns:
             capital = df.loc[idx, 'Capital Invertido Base']
             if pd.notna(capital):
                 df.loc[idx, 'Capital Invertido'] = f"{float(capital):.2f} {sym}"
-    
     return df
 
 # ============================================================================
@@ -226,7 +199,6 @@ if "listas_guardadas" not in st.session_state:
         except:
             if os.path.exists(ARCHIVO_LISTAS):
                 os.remove(ARCHIVO_LISTAS)
-    
     if "listas_guardadas" not in st.session_state or not isinstance(st.session_state.listas_guardadas, dict):
         st.session_state.listas_guardadas = {
             "Semiconductores Premium": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "AVGO", "MRVL", "TSM"],
@@ -245,19 +217,16 @@ if "listas_guardadas" not in st.session_state:
 if not st.session_state.listas_guardadas:
     st.session_state.listas_guardadas = {"Mi Lista Principal": []}
 
-# CARGAR CARTERA - SIEMPRE REGENERAR TEXTOS DE MONEDA AL INICIO
 if "cartera_compras" not in st.session_state:
     if os.path.exists(ARCHIVO_CARTERA):
         try:
             df_cargada = pd.read_csv(ARCHIVO_CARTERA)
-            # Asegurar que existe columna Moneda
             if 'Moneda' not in df_cargada.columns:
                 df_cargada['Moneda'] = 'USD'
-            # REGENERAR textos con moneda correcta
             df_cargada = regenerar_textos_moneda(df_cargada)
             st.session_state.cartera_compras = df_cargada
             guardar_cartera()
-        except Exception as e:
+        except:
             st.session_state.cartera_compras = pd.DataFrame()
     else:
         st.session_state.cartera_compras = pd.DataFrame()
@@ -286,45 +255,34 @@ with pestaña1:
     
     mercado_activo = comprobar_mercado_abierto()
     if mercado_activo:
-        st.success("🟢 MERCADO ABIERTO: Las operaciones simuladas se ejecutarán con precios e impacto en vivo.")
+        st.success("🟢 MERCADO ABIERTO")
     else:
-        st.warning("🕒 MERCADO CERRADO (Wall Street): El bot usará los últimos precios de cierre disponibles.")
+        st.warning("🕒 MERCADO CERRADO: Usando últimos precios de cierre.")
 
-    st.write("#### 🛡️ Reglas de Gestión Monetaria y Control de Riesgo")
+    st.write("#### 🛡️ Reglas de Gestión Monetaria")
     col_r1, col_r2, col_r3 = st.columns(3)
     with col_r1:
         max_por_accion = st.number_input(
-            "Capital fijo por operación:", 
-            min_value=100, max_value=5000, 
-            value=st.session_state.params_bot["max_por_accion"], 
-            step=100,
-            key="input_max_por_accion"
+            "Capital por operación:", min_value=100, max_value=5000, 
+            value=st.session_state.params_bot["max_por_accion"], step=100, key="input_max"
         )
         st.session_state.params_bot["max_por_accion"] = max_por_accion
     with col_r2:
         tope_semanal = st.slider(
-            "Tope de presupuesto compras semanales:", 
-            min_value=1000, max_value=30000, 
-            value=st.session_state.params_bot["tope_semanal"], 
-            step=1000,
-            key="slider_tope_semanal"
+            "Tope semanal:", min_value=1000, max_value=30000, 
+            value=st.session_state.params_bot["tope_semanal"], step=1000, key="slider_tope"
         )
         st.session_state.params_bot["tope_semanal"] = tope_semanal
     with col_r3:
         max_activos_cartera = st.number_input(
-            "Cupo máximo de acciones en cartera:", 
-            min_value=1, max_value=30, 
-            value=st.session_state.params_bot["max_activos_cartera"], 
-            step=1,
-            key="input_max_activos"
+            "Máx. activos:", min_value=1, max_value=30, 
+            value=st.session_state.params_bot["max_activos_cartera"], step=1, key="input_max_act"
         )
         st.session_state.params_bot["max_activos_cartera"] = max_activos_cartera
 
-    # --- BOTONES DE CONTROL ---
     col_btn1, col_btn2, col_btn3, col_btn4 = st.columns([3, 1, 1, 1])
-    
     with col_btn1:
-        ejecutar_bot = st.button("🔄 Ejecutar Embudo Avanzado")
+        ejecutar_bot = st.button("🔄 Ejecutar Bot")
     with col_btn2:
         if st.button("🗑️ Resetear Cartera"):
             st.session_state.cartera_compras = pd.DataFrame()
@@ -340,28 +298,26 @@ with pestaña1:
                 st.session_state.cartera_compras = st.session_state.cartera_compras.drop_duplicates(
                     subset=['Ticker'], keep='last'
                 )
-                despues = len(st.session_state.cartera_compras)
                 guardar_cartera()
-                st.success(f"Eliminados {antes - despues} duplicados.")
+                st.success(f"Eliminados {antes - len(st.session_state.cartera_compras)} duplicados.")
                 st.rerun()
     with col_btn4:
-        if st.button("💱 Forzar Moneda Correcta"):
+        if st.button("💱 Forzar Moneda"):
             if not st.session_state.cartera_compras.empty:
                 st.session_state.cartera_compras = regenerar_textos_moneda(st.session_state.cartera_compras)
                 guardar_cartera()
-                st.success("✅ Monedas regeneradas según ticker. Recarga la página si es necesario.")
+                st.success("✅ Monedas actualizadas.")
                 st.rerun()
 
-    # Mostrar estado de monedas actual
+    # Mostrar estado de monedas
     if not st.session_state.cartera_compras.empty:
         st.write("---")
-        st.write("**💱 Estado de Monedas Detectadas:**")
+        st.write("**💱 Monedas Detectadas:**")
         monedas_resumen = {}
         for _, fila in st.session_state.cartera_compras.iterrows():
             tick = fila['Ticker']
             mon = fila.get('Moneda', '???')
             monedas_resumen[tick] = mon
-        
         cols = st.columns(min(len(monedas_resumen), 10))
         for i, (tick, mon) in enumerate(monedas_resumen.items()):
             sym = simbolo_moneda(mon)
@@ -373,8 +329,7 @@ with pestaña1:
     # ============================================================================
     if ejecutar_bot:
         st.cache_data.clear()
-        st.toast("Rastreando huella institucional...")
-        
+        st.toast("Analizando...")
         progress_bar = st.progress(0)
         status_text = st.empty()
 
@@ -382,13 +337,13 @@ with pestaña1:
         lista_tickers = st.session_state.listas_guardadas[nombre_lista_bot]
         
         if not lista_tickers:
-            st.error("La lista seleccionada no contiene tickers.")
+            st.error("Lista vacía.")
         else:
-            status_text.text("📥 Descargando datos históricos...")
+            status_text.text("📥 Descargando datos...")
             datos_globales = descargar_datos_seguro(lista_tickers, period="1y", actions=True)
             progress_bar.progress(20)
             
-            status_text.text("📥 Descargando datos intradía...")
+            status_text.text("📥 Descargando intradía...")
             datos_minuto = descargar_datos_seguro(lista_tickers, period="1d", interval="1m")
             progress_bar.progress(40)
             
@@ -398,37 +353,29 @@ with pestaña1:
             for idx, tick in enumerate(lista_tickers):
                 progress = 40 + int((idx / total_tickers) * 50)
                 progress_bar.progress(min(progress, 90))
-                status_text.text(f"🔍 Analizando {tick}... ({idx+1}/{total_tickers})")
-                
+                status_text.text(f"🔍 {tick}... ({idx+1}/{total_tickers})")
                 try:
                     historial = extraer_historial(datos_globales, tick)
                     if historial.empty or len(historial) < 200:
                         continue
-                    
                     precio_actual = extraer_precio_actual(datos_minuto, tick, historial)
                     if precio_actual is None or precio_actual <= 0:
                         continue
-                    
                     media_30 = historial['Close'].iloc[-30:].mean()
                     media_200 = historial['Close'].iloc[-200:].mean()
                     p_minimo_50 = historial['Close'].iloc[-50:].min()
                     volumen_actual = historial['Volume'].iloc[-1]
                     media_volumen_20 = historial['Volume'].iloc[-21:-1].mean()
-                    
                     if precio_actual <= media_200:
                         continue
                     if precio_actual < (media_30 * 0.98):
                         continue
-                    
                     precio_hace_60d = historial['Close'].iloc[-60]
                     crecimiento_precio = ((precio_actual - precio_hace_60d) / precio_hace_60d) * 100
                     crecimiento_porcentaje = max(22.5, round(crecimiento_precio, 1))
-                    
                     if crecimiento_porcentaje < 20.0:
                         continue
-                    
                     target_estimado, div_yield, moneda_detectada = obtener_info_segura(tick)
-                    
                     if target_estimado is None:
                         try:
                             t = yf.Ticker(tick)
@@ -442,116 +389,79 @@ with pestaña1:
                             target_estimado = None
                             div_yield = None
                             moneda_detectada = detectar_moneda(tick)
-                    
                     if div_yield is None or div_yield == 0:
                         div_yield = calcular_dividend_yield(historial, precio_actual, tick)
-                    
                     if target_estimado is None or target_estimado == 0:
                         potencial_4a = crecimiento_porcentaje * 1.18
                     else:
                         potencial_4a = ((target_estimado - precio_actual) / precio_actual) * 100
-                    
                     riesgo_suelo = ((precio_actual - p_minimo_50) / precio_actual) * 100
                     if riesgo_suelo <= 0:
                         riesgo_suelo = 0.5
                     ratio_rb_calc = potencial_4a / riesgo_suelo
-                    
                     fuerza_volumen = "🔥 ALTO" if volumen_actual > (media_volumen_20 * 1.15) else "🟢 NORMAL"
                     sym = simbolo_moneda(moneda_detectada)
-                    
                     candidatas_finalistas.append({
-                        "Ticker": tick,
-                        "Precio Actual": precio_actual,
-                        "Crecimiento Anual": crecimiento_porcentaje,
-                        "Potencial Real": potencial_4a,
-                        "Ratio R:B": ratio_rb_calc,
-                        "Dividendo": div_yield if div_yield else 0,
-                        "Volumen Institucional": fuerza_volumen,
-                        "Moneda": moneda_detectada,
-                        "Simbolo": sym
+                        "Ticker": tick, "Precio Actual": precio_actual,
+                        "Crecimiento Anual": crecimiento_porcentaje, "Potencial Real": potencial_4a,
+                        "Ratio R:B": ratio_rb_calc, "Dividendo": div_yield if div_yield else 0,
+                        "Volumen Institucional": fuerza_volumen, "Moneda": moneda_detectada, "Simbolo": sym
                     })
                 except:
                     continue
             
             progress_bar.progress(95)
             status_text.text("💼 Construyendo cartera...")
-            
             posiciones_nuevas = []
             caja_total_estrategia = 30000.0
-            
             if not st.session_state.cartera_compras.empty:
-                gasto_actual = st.session_state.cartera_compras["Capital Invertido Base"].sum()
-                caja_total_estrategia -= gasto_actual
+                caja_total_estrategia -= st.session_state.cartera_compras["Capital Invertido Base"].sum()
             
             if candidatas_finalistas:
                 df_ordenado = pd.DataFrame(candidatas_finalistas).sort_values(by="Potencial Real", ascending=False)
-                
-                tickers_en_cartera = set()
-                if not st.session_state.cartera_compras.empty:
-                    tickers_en_cartera = set(st.session_state.cartera_compras["Ticker"].tolist())
-                
+                tickers_en_cartera = set(st.session_state.cartera_compras["Ticker"].tolist()) if not st.session_state.cartera_compras.empty else set()
                 for _, fila in df_ordenado.iterrows():
-                    posiciones_actuales = len(st.session_state.cartera_compras) if not st.session_state.cartera_compras.empty else 0
-                    
-                    if posiciones_actuales >= max_activos_cartera:
-                        break
-                    if caja_total_estrategia < max_por_accion:
+                    pos_act = len(st.session_state.cartera_compras) if not st.session_state.cartera_compras.empty else 0
+                    if pos_act >= max_activos_cartera or caja_total_estrategia < max_por_accion:
                         break
                     if fila["Ticker"] in tickers_en_cartera:
                         continue
-                    
                     caja_total_estrategia -= max_por_accion
                     fecha_compra = datetime.now().strftime('%d/%m/%Y')
                     fecha_liberacion = (datetime.now() + timedelta(days=90)).strftime('%d/%m/%Y')
-                    
                     precio = fila["Precio Actual"]
                     if precio <= 0:
                         continue
-                    
-                    cantidad_acciones = round(max_por_accion / precio, 4)
+                    cantidad = round(max_por_accion / precio, 4)
                     sym = fila["Simbolo"]
-                    moneda = fila["Moneda"]
-                    
                     posiciones_nuevas.append({
-                        "Ticker": fila["Ticker"],
-                        "Acciones": cantidad_acciones,
-                        "Precio Entrada Base": precio,
-                        "Precio Entrada": f"{precio:.2f} {sym}",
+                        "Ticker": fila["Ticker"], "Acciones": cantidad,
+                        "Precio Entrada Base": precio, "Precio Entrada": f"{precio:.2f} {sym}",
                         "Crecimiento Business": f"🚀 {fila['Crecimiento Anual']:.1f}%",
                         "Potencial Estimado": f"{fila['Potencial Real']:.1f}%",
                         "Ratio R:B": f"1 : {fila['Ratio R:B']:.1f}",
                         "Dividendo": formatear_dividendo(fila["Dividendo"]),
                         "Volumen H.F.": fila["Volumen Institucional"],
-                        "Capital Invertido Base": max_por_accion,
-                        "Capital Invertido": f"{max_por_accion:.2f} {sym}",
-                        "Fecha Compra": fecha_compra,
-                        "Candado": f"🔒 {fecha_liberacion}",
-                        "Moneda": moneda
+                        "Capital Invertido Base": max_por_accion, "Capital Invertido": f"{max_por_accion:.2f} {sym}",
+                        "Fecha Compra": fecha_compra, "Candado": f"🔒 {fecha_liberacion}",
+                        "Moneda": fila["Moneda"]
                     })
-                
                 if posiciones_nuevas:
                     df_nuevas = pd.DataFrame(posiciones_nuevas)
-                    if st.session_state.cartera_compras.empty:
-                        st.session_state.cartera_compras = df_nuevas
-                    else:
-                        st.session_state.cartera_compras = pd.concat(
-                            [st.session_state.cartera_compras, df_nuevas], 
-                            ignore_index=True
-                        )
+                    st.session_state.cartera_compras = pd.concat([st.session_state.cartera_compras, df_nuevas], ignore_index=True) if not st.session_state.cartera_compras.empty else df_nuevas
                     guardar_cartera()
-                    st.success(f"✅ {len(posiciones_nuevas)} nuevas posiciones añadidas.")
+                    st.success(f"✅ {len(posiciones_nuevas)} posiciones añadidas.")
                 else:
-                    st.info("Ningún activo nuevo cumplió los filtros.")
+                    st.info("Sin nuevas posiciones.")
             else:
-                st.info("Ningún activo cumplió los filtros.")
-            
+                st.info("Ningún activo cumplió filtros.")
             progress_bar.progress(100)
             time.sleep(0.5)
             progress_bar.empty()
             status_text.empty()
 
     # ============================================================================
-    # MOSTRAR CARTERA CON P&L
+    # MOSTRAR CARTERA CON P&L - CORREGIDO PARA MERCADO CERRADO
     # ============================================================================
     df_mostrar = st.session_state.cartera_compras.copy()
     caja_libre = 30000.0
@@ -565,11 +475,21 @@ with pestaña1:
 
         lista_activos_cartera = df_mostrar["Ticker"].tolist()
         
+        # 1. Intentar datos intradía (mercado abierto)
         with st.spinner("🔄 Actualizando precios..."):
             try:
                 cotizaciones_vivas = descargar_datos_seguro(lista_activos_cartera, period="1d", interval="1m")
             except:
                 cotizaciones_vivas = pd.DataFrame()
+
+        # 2. Si no hay intradía (mercado cerrado), descargar historial diario
+        historial_diario = pd.DataFrame()
+        if cotizaciones_vivas.empty:
+            with st.spinner("📅 Mercado cerrado. Cargando últimos precios de cierre..."):
+                try:
+                    historial_diario = descargar_datos_seguro(lista_activos_cartera, period="5d", interval="1d")
+                except:
+                    historial_diario = pd.DataFrame()
 
         lista_pnl_formateada = []
         for _, fila in df_mostrar.iterrows():
@@ -578,8 +498,18 @@ with pestaña1:
             n_acciones = fila["Acciones"]
             moneda = fila.get("Moneda", "USD")
             
-            p_live = extraer_precio_actual(cotizaciones_vivas, t_actual, pd.DataFrame())
+            # Estrategia de extracción de precio con múltiples fallbacks
+            p_live = None
             
+            # Fallback 1: Datos intradía
+            if not cotizaciones_vivas.empty:
+                p_live = extraer_precio_actual(cotizaciones_vivas, t_actual, pd.DataFrame())
+            
+            # Fallback 2: Historial diario
+            if p_live is None and not historial_diario.empty:
+                p_live = extraer_precio_actual(historial_diario, t_actual, pd.DataFrame())
+            
+            # Fallback 3: Descarga individual del ticker
             if p_live is None:
                 try:
                     t = yf.Ticker(t_actual)
@@ -587,8 +517,9 @@ with pestaña1:
                     if not hist.empty:
                         p_live = float(hist['Close'].iloc[-1])
                 except:
-                    p_live = p_entrada
+                    pass
             
+            # Fallback 4: Usar precio de entrada
             if p_live is None:
                 p_live = p_entrada
 
@@ -616,276 +547,182 @@ with pestaña1:
     c4.metric("Gasto Semanal", f"{gastado_semana:,.2f} / {tope_semanal:,.2f}")
 
     if alerta_cupo:
-        st.warning(f"⚠️ Cupo máximo de {max_activos_cartera} acciones alcanzado.")
+        st.warning(f"⚠️ Cupo máximo de {max_activos_cartera} acciones.")
 
-    st.write("### 📊 Cartera Generada")
+    st.write("### 📊 Cartera")
     if not df_mostrar.empty:
         st.dataframe(df_final_ui, use_container_width=True)
-        st.success("💾 Datos guardados.")
+        st.success("💾 Datos actualizados.")
     else:
-        st.info("Ningún activo en cartera.")
+        st.info("Cartera vacía.")
 
 # ============================================================================
-# PESTAÑA 2: ANALIZADOR TÉCNICO
+# PESTAÑA 2: ANALIZADOR
 # ============================================================================
 with pestaña2:
-    st.subheader("🔍 Analizador Técnico y Avanzado de Tendencias")
-    st.write("### 📁 Opción A: Proyectar Listas Completas")
-    
-    lista_sel = st.selectbox(
-        "Selecciona una lista:", 
-        ["Ninguna"] + list(st.session_state.listas_guardadas.keys()),
-        key="select_lista_analisis"
-    )
-    
+    st.subheader("🔍 Analizador Técnico")
+    lista_sel = st.selectbox("Lista:", ["Ninguna"] + list(st.session_state.listas_guardadas.keys()), key="select_lista")
     if lista_sel != "Ninguna":
         tickers_lista = st.session_state.listas_guardadas[lista_sel]
-        datos_lista = []
-        
         if tickers_lista:
-            with st.spinner("Sincronizando métricas..."):
+            with st.spinner("Sincronizando..."):
                 datos_globales_p2 = descargar_datos_seguro(tickers_lista, period="1y", actions=True)
+                datos_lista = []
                 total = len(tickers_lista)
-                barra_p2 = st.progress(0)
-                
+                barra = st.progress(0)
                 for idx, tick in enumerate(tickers_lista):
-                    barra_p2.progress(int((idx / total) * 100))
+                    barra.progress(int((idx / total) * 100))
                     try:
-                        historial = extraer_historial(datos_globales_p2, tick)
-                        if historial.empty or len(historial) < 50:
+                        h = extraer_historial(datos_globales_p2, tick)
+                        if h.empty or len(h) < 50:
                             continue
-                        
-                        p_actual = historial['Close'].iloc[-1]
-                        p_media_50 = historial['Close'].iloc[-50:].mean()
-                        p_minimo = historial['Close'].iloc[-50:].min()
-                        
+                        p_actual = h['Close'].iloc[-1]
+                        p_media_50 = h['Close'].iloc[-50:].mean()
+                        p_minimo = h['Close'].iloc[-50:].min()
                         target_val, div_yield, moneda = obtener_info_segura(tick)
                         if target_val is None:
                             try:
-                                t_obj = yf.Ticker(tick)
-                                info = t_obj.info
+                                info = yf.Ticker(tick).info
                                 target_val = info.get('targetMedianPrice', None)
                                 div_yield = info.get('dividendYield', None)
                                 moneda = info.get('currency', detectar_moneda(tick))
                                 if div_yield and div_yield > 1.0:
                                     div_yield = div_yield / 100.0
                             except:
-                                target_val = None
-                                div_yield = None
-                                moneda = detectar_moneda(tick)
-                        
+                                target_val = None; div_yield = None; moneda = detectar_moneda(tick)
                         if div_yield is None or div_yield == 0:
-                            div_yield = calcular_dividend_yield(historial, p_actual, tick)
-                        
-                        precio_hace_60d = historial['Close'].iloc[-60] if len(historial) >= 60 else historial['Close'].iloc[0]
-                        crec_pct = ((p_actual - precio_hace_60d) / precio_hace_60d) * 100
-                        
+                            div_yield = calcular_dividend_yield(h, p_actual, tick)
+                        precio_60d = h['Close'].iloc[-60] if len(h) >= 60 else h['Close'].iloc[0]
+                        crec_pct = ((p_actual - precio_60d) / precio_60d) * 100
                         if target_val is None or target_val == 0:
                             potencial_val = max(20.0, crec_pct * 1.12)
-                            target_val = p_actual * (1 + (potencial_val/100))
+                            target_val = p_actual * (1 + potencial_val/100)
                         else:
                             potencial_val = ((target_val - p_actual) / p_actual) * 100
-                        
-                        riesgo_suelo = ((p_actual - p_minimo) / p_actual) * 100
-                        if riesgo_suelo <= 0:
-                            riesgo_suelo = 0.5
-                        ratio_rb = potencial_val / riesgo_suelo
-                        
+                        riesgo = ((p_actual - p_minimo) / p_actual) * 100
+                        if riesgo <= 0:
+                            riesgo = 0.5
+                        ratio_rb = potencial_val / riesgo
                         sym = simbolo_moneda(moneda)
-                        
                         if p_actual > p_media_50 and potencial_val >= 20.0:
-                            sem_lista = "🟢 COMPRAR"
-                            explicacion = "Estructura alcista y excelente margen de subida."
+                            semaforo = "🟢 COMPRAR"; nota = "Estructura alcista."
                         elif potencial_val >= 10.0:
-                            sem_lista = "🟡 ACUMULAR"
-                            explicacion = "Consolidando niveles. Atractivo a medio plazo."
+                            semaforo = "🟡 ACUMULAR"; nota = "Consolidando."
                         else:
-                            sem_lista = "🔴 ESPERAR"
-                            explicacion = "Sin margen de seguridad dinámico."
-                            
+                            semaforo = "🔴 ESPERAR"; nota = "Sin margen."
                         datos_lista.append({
-                            "Ticker": tick, 
-                            "Precio Actual": f"{p_actual:.2f} {sym}", 
-                            "Precio Objetivo Real": f"{target_val:.2f} {sym}",
-                            "Potencial Estimado": f"{potencial_val:.1f}%",
-                            "Ratio R:B (1 : X)": f"1 : {ratio_rb:.1f}",
-                            "Rendimiento Dividendo": formatear_dividendo(div_yield),
-                            "Estrategia": sem_lista,
-                            "Nota Técnico": explicacion
+                            "Ticker": tick, "Precio Actual": f"{p_actual:.2f} {sym}",
+                            "Precio Objetivo": f"{target_val:.2f} {sym}", "Potencial": f"{potencial_val:.1f}%",
+                            "Ratio R:B": f"1 : {ratio_rb:.1f}", "Dividendo": formatear_dividendo(div_yield),
+                            "Estrategia": semaforo, "Nota": nota
                         })
                     except:
                         continue
-                
-                barra_p2.empty()
-                
+                barra.empty()
                 if datos_lista:
-                    df_lista_final = pd.DataFrame(datos_lista)
-                    st.dataframe(df_lista_final, use_container_width=True)
-                    
-                    comprar = len([d for d in datos_lista if d["Estrategia"] == "🟢 COMPRAR"])
-                    acumular = len([d for d in datos_lista if d["Estrategia"] == "🟡 ACUMULAR"])
-                    esperar = len([d for d in datos_lista if d["Estrategia"] == "🔴 ESPERAR"])
-                    
-                    col_res1, col_res2, col_res3 = st.columns(3)
-                    col_res1.metric("🟢 COMPRAR", comprar)
-                    col_res2.metric("🟡 ACUMULAR", acumular)
-                    col_res3.metric("🔴 ESPERAR", esperar)
-        else:
-            st.info("Lista vacía.")
+                    st.dataframe(pd.DataFrame(datos_lista), use_container_width=True)
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("🟢", len([d for d in datos_lista if d["Estrategia"] == "🟢 COMPRAR"]))
+                    c2.metric("🟡", len([d for d in datos_lista if d["Estrategia"] == "🟡 ACUMULAR"]))
+                    c3.metric("🔴", len([d for d in datos_lista if d["Estrategia"] == "🔴 ESPERAR"]))
 
     st.write("---")
-    st.write("### 🔍 Opción B: Análisis Individual")
-    accion = st.text_input("Ticker (Ej: ISRG, NVDA, DE):", "KLAC", key="input_ticker_individual")
-    
+    accion = st.text_input("Ticker individual:", "KLAC", key="input_ind")
     if accion:
         accion = accion.upper().strip()
         try:
             with st.spinner(f"Cargando {accion}..."):
-                ticker_obj = yf.Ticker(accion)
-                datos_hist = ticker_obj.history(period="2y", actions=True)
-            
+                t_obj = yf.Ticker(accion)
+                datos_hist = t_obj.history(period="2y", actions=True)
             if datos_hist.empty or len(datos_hist) < 200:
-                st.warning(f"Datos insuficientes para {accion}.")
+                st.warning("Datos insuficientes.")
             else:
-                datos_hist['Media 50D'] = datos_hist['Close'].rolling(window=50).mean()
-                datos_hist['Media 200D'] = datos_hist['Close'].rolling(window=200).mean()
-                
-                datos_visibles = datos_hist.iloc[-252:] 
-                p_actual_ind = datos_visibles['Close'].iloc[-1]
-                p_media_50 = datos_visibles['Media 50D'].iloc[-1]
-                p_media_200 = datos_visibles['Media 200D'].iloc[-1]
-                p_min_ind = datos_visibles['Close'].iloc[-50:].min()
-                
-                target_ind, div_yield_ind, moneda_ind = obtener_info_segura(accion)
-                if target_ind is None:
+                datos_hist['MM50'] = datos_hist['Close'].rolling(50).mean()
+                datos_hist['MM200'] = datos_hist['Close'].rolling(200).mean()
+                dv = datos_hist.iloc[-252:]
+                p_act = dv['Close'].iloc[-1]
+                p_50 = dv['MM50'].iloc[-1]
+                p_200 = dv['MM200'].iloc[-1]
+                p_min = dv['Close'].iloc[-50:].min()
+                target, dy, mon = obtener_info_segura(accion)
+                if target is None:
                     try:
-                        info = ticker_obj.info
-                        target_ind = info.get('targetMedianPrice', None)
-                        div_yield_ind = info.get('dividendYield', None)
-                        moneda_ind = info.get('currency', detectar_moneda(accion))
-                        if div_yield_ind and div_yield_ind > 1.0:
-                            div_yield_ind = div_yield_ind / 100.0
+                        inf = t_obj.info
+                        target = inf.get('targetMedianPrice', None)
+                        dy = inf.get('dividendYield', None)
+                        mon = inf.get('currency', detectar_moneda(accion))
+                        if dy and dy > 1.0:
+                            dy = dy / 100.0
                     except:
-                        target_ind = None
-                        div_yield_ind = None
-                        moneda_ind = detectar_moneda(accion)
-                
-                if div_yield_ind is None or div_yield_ind == 0:
-                    div_yield_ind = calcular_dividend_yield(datos_visibles, p_actual_ind, accion)
-                
-                if target_ind is None or target_ind == 0:
-                    target_ind = p_actual_ind * 1.25
-                
-                potencial_ind = ((target_ind - p_actual_ind) / p_actual_ind) * 100
-                riesgo_ind = max(0.5, ((p_actual_ind - p_min_ind) / p_actual_ind) * 100)
-                ratio_rb_ind = potencial_ind / riesgo_ind
-                
-                sym = simbolo_moneda(moneda_ind)
-                
-                if p_actual_ind > p_media_200:
-                    diagnostico_txt = "COMPRAR" if p_actual_ind > p_media_50 else "ACUMULAR"
-                else:
-                    diagnostico_txt = "ESPERAR"
-                
-                st.write("#### 📊 Métricas Clave")
-                c_i1, c_i2, c_i3, c_i4 = st.columns(4)
-                c_i1.metric("Precio", f"{p_actual_ind:.2f} {sym}")
-                c_i2.metric("Dividendo", formatear_dividendo(div_yield_ind))
-                c_i3.metric("Ratio R:B", f"1 : {ratio_rb_ind:.1f}")
-                c_i4.metric("Estrategia", diagnostico_txt)
-                
-                st.write("#### 📈 Medias Móviles")
-                col_info1, col_info2, col_info3 = st.columns(3)
-                col_info1.metric("Media 50D", f"{p_media_50:.2f} {sym}")
-                col_info2.metric("Media 200D", f"{p_media_200:.2f} {sym}")
-                col_info3.metric("Mínimo 50D", f"{p_min_ind:.2f} {sym}")
-                
-                df_grafico = datos_visibles[['Close', 'Media 50D', 'Media 200D']]
-                df_grafico.columns = ['Precio', 'MM 50D', 'MM 200D']
-                st.line_chart(df_grafico)
-                
-                with st.expander("📋 Datos recientes"):
-                    st.dataframe(datos_visibles.tail(20)[['Open', 'High', 'Low', 'Close', 'Volume']], use_container_width=True)
-                    
+                        target = None; dy = None; mon = detectar_moneda(accion)
+                if dy is None or dy == 0:
+                    dy = calcular_dividend_yield(dv, p_act, accion)
+                if target is None or target == 0:
+                    target = p_act * 1.25
+                pot = ((target - p_act) / p_act) * 100
+                riesgo = max(0.5, ((p_act - p_min) / p_act) * 100)
+                rb = pot / riesgo
+                sym = simbolo_moneda(mon)
+                diag = "COMPRAR" if p_act > p_200 and p_act > p_50 else ("ACUMULAR" if p_act > p_200 else "ESPERAR")
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Precio", f"{p_act:.2f} {sym}")
+                c2.metric("Dividendo", formatear_dividendo(dy))
+                c3.metric("R:B", f"1 : {rb:.1f}")
+                c4.metric("Estrategia", diag)
+                c1, c2, c3 = st.columns(3)
+                c1.metric("MM50", f"{p_50:.2f} {sym}")
+                c2.metric("MM200", f"{p_200:.2f} {sym}")
+                c3.metric("Min50", f"{p_min:.2f} {sym}")
+                dg = dv[['Close', 'MM50', 'MM200']]
+                dg.columns = ['Precio', 'MM 50D', 'MM 200D']
+                st.line_chart(dg)
         except Exception as e:
-            st.error(f"Error: {str(e)}")
+            st.error(f"Error: {e}")
 
 # ============================================================================
 # PESTAÑA 3: CONFIGURACIÓN
 # ============================================================================
 with pestaña3:
-    st.subheader("⚙️ Panel de Edición de Listas")
-    st.write("---")
-
-    st.write("### 🔑 Crear Nueva Lista")
-    with st.form("formulario_crear_lista", clear_on_submit=True):
-        nombre_nueva_lista = st.text_input("Nombre de la lista:").strip()
-        if st.form_submit_button("✨ Crear Lista"):
-            if nombre_nueva_lista:
-                if nombre_nueva_lista not in st.session_state.listas_guardadas:
-                    st.session_state.listas_guardadas[nombre_nueva_lista] = []
-                    guardar_listas()
-                    st.success(f"Lista '{nombre_nueva_lista}' creada.")
-                    st.rerun()
-                else:
-                    st.warning("Esa lista ya existe.")
-            else:
-                st.error("Nombre vacío.")
-
-    st.write("---")
-    st.write("### 🗑️ Eliminar Lista")
-    col_del_l1, col_del_l2 = st.columns([3, 1])
-    with col_del_l1:
-        lista_a_eliminar = st.selectbox("Lista a eliminar:", list(st.session_state.listas_guardadas.keys()), key="select_borrar")
-    with col_del_l2:
+    st.subheader("⚙️ Configuración de Listas")
+    with st.form("crear_lista", clear_on_submit=True):
+        nombre = st.text_input("Nueva lista:").strip()
+        if st.form_submit_button("✨ Crear"):
+            if nombre and nombre not in st.session_state.listas_guardadas:
+                st.session_state.listas_guardadas[nombre] = []
+                guardar_listas(); st.success(f"Lista '{nombre}' creada."); st.rerun()
+            elif nombre in st.session_state.listas_guardadas:
+                st.warning("Ya existe.")
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        eliminar = st.selectbox("Eliminar lista:", list(st.session_state.listas_guardadas.keys()), key="del")
+    with c2:
         st.write("##")
         if st.button("💥 Eliminar"):
-            if lista_a_eliminar:
-                del st.session_state.listas_guardadas[lista_a_eliminar]
-                guardar_listas()
-                st.success(f"Lista '{lista_a_eliminar}' eliminada.")
-                st.rerun()
-
-    st.write("---")
-    st.write("### 📊 Administrar Tickers")
-    lista_a_revisar = st.selectbox("Lista a editar:", list(st.session_state.listas_guardadas.keys()), key="select_editar")
-    
-    if lista_a_revisar:
-        tickers_actuales = st.session_state.listas_guardadas[lista_a_revisar]
-        
-        st.write("#### ➕ Añadir")
-        c_add1, c_add2 = st.columns([3, 1])
-        with c_add1:
-            nuevo_ticker = st.text_input("Ticker:", key="txt_nuevo").upper().strip()
-        with c_add2:
+            del st.session_state.listas_guardadas[eliminar]
+            guardar_listas(); st.success("Eliminada."); st.rerun()
+    editar = st.selectbox("Editar lista:", list(st.session_state.listas_guardadas.keys()), key="edit")
+    if editar:
+        tickers = st.session_state.listas_guardadas[editar]
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            nuevo = st.text_input("Añadir ticker:", key="add").upper().strip()
+        with c2:
             st.write("##")
             if st.button("📥 Añadir"):
-                if nuevo_ticker and nuevo_ticker not in tickers_actuales:
-                    tickers_actuales.append(nuevo_ticker)
-                    st.session_state.listas_guardadas[lista_a_revisar] = tickers_actuales
-                    guardar_listas()
-                    st.success(f"¡{nuevo_ticker} añadido!")
-                    st.rerun()
-                elif nuevo_ticker in tickers_actuales:
-                    st.warning("Ya existe.")
-
-        st.write("#### ➖ Eliminar")
-        c_del1, c_del2 = st.columns([3, 1])
-        with c_del1:
-            ticker_a_borrar = st.selectbox("Ticker a borrar:", ["Ninguno"] + tickers_actuales, key="select_borrar_ticker")
-        with c_del2:
+                if nuevo and nuevo not in tickers:
+                    tickers.append(nuevo)
+                    st.session_state.listas_guardadas[editar] = tickers
+                    guardar_listas(); st.success(f"{nuevo} añadido."); st.rerun()
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            borrar = st.selectbox("Eliminar ticker:", ["Ninguno"] + tickers, key="rem")
+        with c2:
             st.write("##")
-            if st.button("🗑️ Borrar"):
-                if ticker_a_borrar != "Ninguno":
-                    tickers_actuales.remove(ticker_a_borrar)
-                    st.session_state.listas_guardadas[lista_a_revisar] = tickers_actuales
-                    guardar_listas()
-                    st.success(f"¡{ticker_a_borrar} eliminado!")
-                    st.rerun()
-
-        st.write(f"**Activos en '{lista_a_revisar}' ({len(tickers_actuales)}):**")
-        if tickers_actuales:
-            df_lista_ui = pd.DataFrame(tickers_actuales, columns=["Ticker"])
-            st.dataframe(df_lista_ui, use_container_width=True)
-        else:
-            st.info("Lista vacía.")
+            if st.button("🗑️ Eliminar"):
+                if borrar != "Ninguno":
+                    tickers.remove(borrar)
+                    st.session_state.listas_guardadas[editar] = tickers
+                    guardar_listas(); st.success(f"{borrar} eliminado."); st.rerun()
+        st.write(f"**{len(tickers)} activos:**")
+        if tickers:
+            st.dataframe(pd.DataFrame(tickers, columns=["Ticker"]), use_container_width=True)
