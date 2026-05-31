@@ -866,4 +866,108 @@ with pestaña2:
                         interes_inst = calcular_interes_institucional(volumen_hf, pct_inst, tendencia_vol)
                         
                         sym = simbolo_moneda(moneda)
-                        pct_inst_txt = f"{pct_inst*100:.
+                        pct_inst_txt = f"{pct_inst*100:.1f}%" if pct_inst else "N/A"
+                        mcap_txt = formatear_market_cap(market_cap)
+
+                        datos_lista.append({
+                            "Ticker": tick,
+                            "Precio Actual": f"{p_actual:.2f} {sym}",
+                            "Media 50d": f"{p_media_50:.2f} {sym}",
+                            "Suelo 50d": f"{p_minimo:.2f} {sym}",
+                            "Potencial Estimado": f"{potencial_val:.1f}%",
+                            "Target": f"{target_val:.2f} {sym}",
+                            "Ratio R:B": f"1 : {ratio_rb:.1f}",
+                            "Dividendo": formatear_dividendo(div_yield),
+                            "Interés Inst.": interes_inst,
+                            "Pct Institucional": pct_inst_txt,
+                            "Market Cap": mcap_txt,
+                            "Tendencia Vol": tendencia_vol,
+                            "Sector": sector,
+                            "Moneda": moneda
+                        })
+                    except Exception as e:
+                        continue
+
+                barra.empty()
+
+                if datos_lista:
+                    df_lista = pd.DataFrame(datos_lista)
+                    st.write(f"**{len(df_lista)} activos analizados**")
+                    st.dataframe(df_lista, use_container_width=True)
+
+                    # Top 5 por potencial
+                    st.write("#### 🏆 Top 5 por Potencial")
+                    df_top = df_lista.sort_values(by="Potencial Estimado", ascending=False).head(5)
+                    st.dataframe(df_top, use_container_width=True)
+                else:
+                    st.warning("No se pudieron analizar activos de esta lista.")
+        else:
+            st.info("Lista vacía.")
+
+# ============================================================================
+# PESTAÑA 3: CONFIGURACIÓN DE LISTAS PREGRABADAS
+# ============================================================================
+with pestaña3:
+    st.subheader("⚙️ Gestión de Listas de Seguimiento")
+
+    for nombre_lista, tickers_lista in st.session_state.listas_guardadas.items():
+        with st.expander(f"📋 {nombre_lista} ({len(tickers_lista)} tickers)"):
+            st.write(f"**Tickers:** {', '.join(tickers_lista)}")
+            col_edit, col_del = st.columns([1, 1])
+            with col_edit:
+                nuevo_nombre = st.text_input(f"Renombrar:", value=nombre_lista, key=f"rename_{nombre_lista}")
+                if nuevo_nombre != nombre_lista and st.button(f"✅ Guardar nombre", key=f"save_name_{nombre_lista}"):
+                    st.session_state.listas_guardadas[nuevo_nombre] = st.session_state.listas_guardadas.pop(nombre_lista)
+                    guardar_listas()
+                    st.success(f"Lista renombrada a '{nuevo_nombre}'")
+                    st.rerun()
+            with col_del:
+                if st.button(f"🗑️ Eliminar lista", key=f"del_{nombre_lista}"):
+                    del st.session_state.listas_guardadas[nombre_lista]
+                    guardar_listas()
+                    st.success(f"Lista '{nombre_lista}' eliminada.")
+                    st.rerun()
+
+    st.write("---")
+    st.write("### ➕ Crear Nueva Lista")
+    nombre_nueva = st.text_input("Nombre de la nueva lista:", key="nueva_lista_nombre")
+    tickers_nueva = st.text_area("Tickers (separados por comas o saltos de línea):", key="nueva_lista_tickers")
+
+    if st.button("💾 Guardar Nueva Lista", key="guardar_nueva"):
+        if nombre_nueva and tickers_nueva:
+            tickers_limpios = [t.strip().upper() for t in tickers_nueva.replace("\n", ",").split(",") if t.strip()]
+            st.session_state.listas_guardadas[nombre_nueva] = tickers_limpios
+            guardar_listas()
+            st.success(f"✅ Lista '{nombre_nueva}' guardada con {len(tickers_limpios)} tickers.")
+            st.rerun()
+        else:
+            st.error("Completa nombre y tickers.")
+
+    st.write("---")
+    st.write("### 📥 Importar/Exportar Listas")
+
+    col_imp, col_exp = st.columns(2)
+    with col_imp:
+        archivo_subido = st.file_uploader("Subir JSON de listas:", type=["json"], key="upload_json")
+        if archivo_subido is not None:
+            try:
+                listas_importadas = json.load(archivo_subido)
+                st.session_state.listas_guardadas.update(listas_importadas)
+                guardar_listas()
+                st.success("✅ Listas importadas correctamente.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error importando: {e}")
+
+    with col_exp:
+        json_str = json.dumps(st.session_state.listas_guardadas, indent=2)
+        st.download_button(
+            label="📥 Descargar listas (JSON)",
+            data=json_str,
+            file_name="listas_permanentes.json",
+            mime="application/json",
+            key="download_json"
+        )
+
+st.write("---")
+st.caption("Centro de Mando Financiero Pro | Desarrollado con Streamlit + yFinance | Datos en tiempo real vía Yahoo Finance")
