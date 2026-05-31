@@ -1,17 +1,47 @@
 import streamlit as st
 import pandas as pd
 import yfinance as yf
+from datetime import datetime, timedelta
+import os
+import json
 
-# --- FUNCIÓN DE DESCARGA MASIVA (Evita RateLimitError) ---
+# 1. Configuración inicial
+st.set_page_config(page_title="Centro de Mando Financiero", layout="wide")
+
+ARCHIVO_CARTERA = "cartera_guardada.csv"
+ARCHIVO_LISTAS = "listas_permanentes.json"
+
+# --- DEFINICIÓN DE PESTAÑAS (DEBE ESTAR AL NIVEL PRINCIPAL) ---
+pestaña1, pestaña2, pestaña3 = st.tabs([
+    "🤖 Bot Masivo Automático 30k", 
+    "🔍 Analizador Técnico Avanzado", 
+    "⚙️ Configuración de Listas"
+])
+
+# --- LÓGICA DE PERSISTENCIA ---
+if "listas_guardadas" not in st.session_state:
+    if os.path.exists(ARCHIVO_LISTAS):
+        with open(ARCHIVO_LISTAS, "r") as f:
+            st.session_state.listas_guardadas = json.load(f)
+    else:
+        st.session_state.listas_guardadas = {"Robótica": ["ARM", "AVGO", "MRVL"]}
+
+if "cartera_compras" not in st.session_state:
+    if os.path.exists(ARCHIVO_CARTERA):
+        st.session_state.cartera_compras = pd.read_csv(ARCHIVO_CARTERA)
+    else:
+        st.session_state.cartera_compras = pd.DataFrame()
+
+# --- FUNCIÓN DE DESCARGA MASIVA (Solución al RateLimitError) ---
 @st.cache_data(ttl=3600)
 def obtener_precios_masivos(lista_tickers):
     if not lista_tickers: return {}
-    # Descarga todos los tickers en UNA sola petición HTTP
+    # Descarga todos los tickers en UNA sola petición
     datos = yf.download(lista_tickers, period="5d", group_by="ticker", progress=False)
     precios = {}
     for tick in lista_tickers:
         try:
-            # Extrae el precio de cierre del último día disponible
+            # Obtiene el último precio de cierre disponible
             if tick in datos.columns.levels[0]:
                 precios[tick] = float(datos[tick]['Close'].iloc[-1])
             else:
@@ -20,45 +50,45 @@ def obtener_precios_masivos(lista_tickers):
             precios[tick] = 0.0
     return precios
 
-# --- PESTAÑA 1 (Integración de la corrección) ---
+# --- PESTAÑA 1 ---
 with pestaña1:
-    # ... (tu lógica de botones de arriba)
+    st.subheader("🤖 Bot Masivo")
+    
+    if st.button("🔄 Ejecutar Análisis de Cartera"):
+        lista_activos = st.session_state.listas_guardadas.get("Robótica", [])
+        # Ejemplo: lógica simple de llenado
+        nuevas_posiciones = []
+        for tick in lista_activos:
+            nuevas_posiciones.append({
+                "Ticker": tick,
+                "Acciones": 1.0,
+                "Precio Entrada Base": 100.0, # Ajusta según tu lógica
+                "Moneda": "USD" if not tick.endswith(('.AS', '.DE')) else "EUR"
+            })
+        st.session_state.cartera_compras = pd.DataFrame(nuevas_posiciones)
+        st.session_state.cartera_compras.to_csv(ARCHIVO_CARTERA, index=False)
+        st.rerun()
 
-    # 1. Aseguramos que df_mostrar exista SIEMPRE
-    if "cartera_compras" in st.session_state and not st.session_state.cartera_compras.empty:
-        df_mostrar = st.session_state.cartera_compras.copy()
-    else:
-        df_mostrar = pd.DataFrame()
-
-    # 2. Solo si hay datos, procedemos a calcular
-    if not df_mostrar.empty:
-        lista_tickers = df_mostrar["Ticker"].unique().tolist()
-        
-        # Llamada única a Yahoo Finance para toda la cartera
+    # Visualización con datos masivos
+    if not st.session_state.cartera_compras.empty:
+        df = st.session_state.cartera_compras.copy()
+        lista_tickers = df["Ticker"].unique().tolist()
         precios_vivos = obtener_precios_masivos(lista_tickers)
-
-        lista_pnl = []
-        for _, fila in df_mostrar.iterrows():
-            ticker = fila["Ticker"]
-            p_entrada = fila["Precio Entrada Base"]
-            n_acciones = fila["Acciones"]
+        
+        pnl_list = []
+        for _, row in df.iterrows():
+            p_live = precios_vivos.get(row['Ticker'], row['Precio Entrada Base'])
+            ganancia = (p_live - row['Precio Entrada Base']) * row['Acciones']
+            pnl_list.append(f"{ganancia:.2f} {row['Moneda']}")
             
-            # Obtenemos precio de nuestro diccionario masivo
-            p_live = precios_vivos.get(ticker, p_entrada)
-            
-            # Cálculo de rendimiento
-            ganancia_euros = (p_live - p_entrada) * n_acciones
-            ganancia_pct = ((p_live - p_entrada) / p_entrada) * 100 if p_entrada > 0 else 0
-            
-            if ganancia_euros > 0:
-                lista_pnl.append(f"🟩 +{ganancia_euros:.2f} € (+{ganancia_pct:.2f}%)")
-            elif ganancia_euros < 0:
-                lista_pnl.append(f"🟥 {ganancia_euros:.2f} € ({ganancia_pct:.2f}%)")
-            else:
-                lista_pnl.append(f"⬜ 0.00 € (0.00%)")
-
-        df_mostrar["Rendimiento Actual (P&L)"] = lista_pnl
-        # ... (resto de tu código de visualización)
-        st.dataframe(df_mostrar)
+        df["Rendimiento (P&L)"] = pnl_list
+        st.dataframe(df, use_container_width=True)
     else:
-        st.info("La cartera está vacía o no hay datos para mostrar.")
+        st.info("La cartera está vacía.")
+
+# --- PESTAÑA 2 Y 3 ---
+with pestaña2:
+    st.write("Analizador Técnico...")
+
+with pestaña3:
+    st.write("Configuración de listas...")
