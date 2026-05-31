@@ -186,49 +186,73 @@ def calcular_interes_institucional(volumen_hf, pct_institucional, tendencia_vol)
 def generar_veredicto(fila):
     """
     Genera un veredicto contextual para cada acción basado en TODAS sus métricas.
+    ROBUSTO: maneja diferentes nombres de columnas y tipos de datos.
     """
-    ticker = fila['Ticker']
-    potencial = float(fila['Potencial 4Años'].replace('%', '')) if isinstance(fila['Potencial 4Años'], str) else 0
-    ratio_rb = fila['Ratio R:B']
-    interes = fila['Interés Inst.']
-    pct_inst = fila['Pct Institucional']
-    crecimiento = float(fila['Crecimiento Business'].replace('🚀 ', '').replace('%', '')) if isinstance(fila['Crecimiento Business'], str) else 0
-    
-    # Extraer ratio numérico
     try:
-        rb_valor = float(ratio_rb.split(':')[1].strip()) if ':' in str(ratio_rb) else 0
-    except:
-        rb_valor = 0
-    
-    veredictos = []
-    
-    # Análisis de potencial
-    if potencial > 100:
-        veredictos.append("🚀 Potencial explosivo")
-    elif potencial > 50:
-        veredictos.append("📈 Alto potencial")
-    elif potencial > 20:
-        veredictos.append("📊 Potencial moderado")
-    else:
-        veredictos.append("⚠️ Potencial limitado")
-    
-    # Análisis institucional
-    if "FUERTE" in interes:
-        veredictos.append("instituciones acumulando")
-    elif "MODERADO" in interes:
-        veredictos.append("interés estable")
-    else:
-        veredictos.append("sin respaldo institucional")
-    
-    # Análisis riesgo/beneficio
-    if rb_valor > 3:
-        veredictos.append("excelente R:B")
-    elif rb_valor > 1.5:
-        veredictos.append("buen R:B")
-    else:
-        veredictos.append("R:B ajustado")
-    
-    return " | ".join(veredictos)
+        # Obtener valores con manejo seguro de columnas
+        ticker = str(fila.get('Ticker', 'N/A'))
+        
+        # Potencial - probar diferentes nombres de columna
+        potencial_raw = fila.get('Potencial 4Años', fila.get('Potencial Estimado', '0%'))
+        if isinstance(potencial_raw, str):
+            potencial = float(potencial_raw.replace('%', '').strip()) if '%' in potencial_raw else 0
+        else:
+            potencial = float(potencial_raw) if pd.notna(potencial_raw) else 0
+        
+        # Ratio R:B
+        ratio_rb = str(fila.get('Ratio R:B', '1 : 1.0'))
+        
+        # Interés institucional
+        interes = str(fila.get('Interés Inst.', fila.get('Interes Inst.', '🎯 DÉBIL')))
+        
+        # Crecimiento
+        crecimiento_raw = fila.get('Crecimiento Business', '0%')
+        if isinstance(crecimiento_raw, str):
+            crecimiento = float(crecimiento_raw.replace('🚀 ', '').replace('%', '').strip()) if '%' in crecimiento_raw else 0
+        else:
+            crecimiento = float(crecimiento_raw) if pd.notna(crecimiento_raw) else 0
+        
+        # Extraer ratio numérico de forma segura
+        rb_valor = 1.0
+        try:
+            if ':' in ratio_rb:
+                partes = ratio_rb.split(':')
+                if len(partes) > 1:
+                    rb_valor = float(partes[1].strip().split()[0])
+        except:
+            rb_valor = 1.0
+        
+        veredictos = []
+        
+        # Análisis de potencial
+        if potencial > 100:
+            veredictos.append("🚀 Potencial explosivo")
+        elif potencial > 50:
+            veredictos.append("📈 Alto potencial")
+        elif potencial > 20:
+            veredictos.append("📊 Potencial moderado")
+        else:
+            veredictos.append("⚠️ Potencial limitado")
+        
+        # Análisis institucional
+        if "FUERTE" in interes:
+            veredictos.append("instituciones acumulando")
+        elif "MODERADO" in interes:
+            veredictos.append("interés estable")
+        else:
+            veredictos.append("sin respaldo institucional")
+        
+        # Análisis riesgo/beneficio
+        if rb_valor > 3:
+            veredictos.append("excelente R:B")
+        elif rb_valor > 1.5:
+            veredictos.append("buen R:B")
+        else:
+            veredictos.append("R:B ajustado")
+        
+        return " | ".join(veredictos)
+    except Exception as e:
+        return f"⚠️ Error análisis: {str(e)[:30]}"
 
 def analizar_cartera_global(df):
     """
@@ -238,15 +262,17 @@ def analizar_cartera_global(df):
         return []
     
     recomendaciones = []
-    
-    # 1. Análisis de concentración
     tickers = df['Ticker'].tolist()
     
-    # 2. Análisis de potencial medio
+    # Análisis de potencial medio
     potenciales = []
     for _, fila in df.iterrows():
         try:
-            p = float(fila['Potencial 4Años'].replace('%', '')) if isinstance(fila['Potencial 4Años'], str) else 0
+            pot_raw = fila.get('Potencial 4Años', fila.get('Potencial Estimado', '0%'))
+            if isinstance(pot_raw, str):
+                p = float(pot_raw.replace('%', '').strip()) if '%' in pot_raw else 0
+            else:
+                p = float(pot_raw) if pd.notna(pot_raw) else 0
             potenciales.append(p)
         except:
             pass
@@ -260,9 +286,9 @@ def analizar_cartera_global(df):
     else:
         recomendaciones.append(f"🛡️ **Potencial medio del {potencial_medio:.0f}%**: Cartera conservadora. Considera añadir más tech/robótica.")
     
-    # 3. Análisis de institucional
-    fuertes = sum(1 for _, f in df.iterrows() if "FUERTE" in str(f.get('Interés Inst.', '')))
-    moderados = sum(1 for _, f in df.iterrows() if "MODERADO" in str(f.get('Interés Inst.', '')))
+    # Análisis de institucional
+    fuertes = sum(1 for _, f in df.iterrows() if "FUERTE" in str(f.get('Interés Inst.', f.get('Interes Inst.', ''))))
+    moderados = sum(1 for _, f in df.iterrows() if "MODERADO" in str(f.get('Interés Inst.', f.get('Interes Inst.', ''))))
     
     if fuertes >= 5:
         recomendaciones.append(f"🏦 **{fuertes} de {len(df)} con interés institucional FUERTE**: Los fondos confían en tu selección. Buena señal de validación.")
@@ -271,7 +297,7 @@ def analizar_cartera_global(df):
     else:
         recomendaciones.append(f"⚠️ **Poco respaldo institucional**: La mayoría de tus acciones no tienen fuerte seguimiento de fondos. Mayor riesgo pero también mayor recompensa potencial.")
     
-    # 4. Análisis de diversificación implícito
+    # Análisis de diversificación
     sectores_detectados = set()
     for tick in tickers:
         try:
@@ -286,7 +312,7 @@ def analizar_cartera_global(df):
     else:
         recomendaciones.append(f"🎯 **Concentrado en pocos sectores**: Alta correlación entre tus activos. Si cae la robótica, cae toda la cartera.")
     
-    # 5. Recomendación de acción
+    # Recomendación de acción
     recomendaciones.append("---")
     recomendaciones.append("**💡 Próximos pasos recomendados:**")
     
@@ -298,10 +324,14 @@ def analizar_cartera_global(df):
     peor_ticker = ""
     for _, fila in df.iterrows():
         try:
-            rb = float(fila['Ratio R:B'].split(':')[1].strip()) if ':' in str(fila['Ratio R:B']) else 999
-            if rb < peor_ratio:
-                peor_ratio = rb
-                peor_ticker = fila['Ticker']
+            rb_str = str(fila.get('Ratio R:B', '1 : 1.0'))
+            if ':' in rb_str:
+                partes = rb_str.split(':')
+                if len(partes) > 1:
+                    rb = float(partes[1].strip().split()[0])
+                    if rb < peor_ratio:
+                        peor_ratio = rb
+                        peor_ticker = fila['Ticker']
         except:
             pass
     
@@ -715,8 +745,12 @@ with pestaña1:
 
         df_mostrar["Rendimiento Actual (P&L)"] = lista_pnl_formateada
         
-        # GENERAR VEREDICTO CONTEXTUAL PARA CADA ACCIÓN
-        df_mostrar["📝 Veredicto"] = df_mostrar.apply(generar_veredicto, axis=1)
+        # GENERAR VEREDICTO CONTEXTUAL PARA CADA ACCIÓN (con manejo de errores)
+        try:
+            df_mostrar["📝 Veredicto"] = df_mostrar.apply(generar_veredicto, axis=1)
+        except Exception as e:
+            st.warning(f"⚠️ No se pudo generar veredictos: {e}")
+            df_mostrar["📝 Veredicto"] = "⚠️ Pendiente de análisis"
         
         # Columnas finales
         columnas_mostrar = [
@@ -754,15 +788,18 @@ with pestaña1:
         st.write("---")
         st.write("### 🧠 Análisis de tu Cartera")
         
-        recomendaciones = analizar_cartera_global(df_mostrar)
-        
-        for rec in recomendaciones:
-            if rec.startswith("---"):
-                st.write("---")
-            elif rec.startswith("**"):
-                st.write(rec)
-            else:
-                st.write(rec)
+        try:
+            recomendaciones = analizar_cartera_global(df_mostrar)
+            
+            for rec in recomendaciones:
+                if rec.startswith("---"):
+                    st.write("---")
+                elif rec.startswith("**"):
+                    st.write(rec)
+                else:
+                    st.write(rec)
+        except Exception as e:
+            st.error(f"⚠️ Error en análisis global: {e}")
         
         st.info("📅 **Recordatorio:** Revisa esta cartera una vez por semana. No tomes decisiones impulsivas antes del candado de 90 días.")
 
@@ -829,184 +866,4 @@ with pestaña2:
                         interes_inst = calcular_interes_institucional(volumen_hf, pct_inst, tendencia_vol)
                         
                         sym = simbolo_moneda(moneda)
-                        pct_inst_txt = f"{pct_inst*100:.1f}%" if pct_inst else "N/A"
-                        mcap_txt = formatear_market_cap(market_cap)
-                        
-                        if p_actual > p_media_50 and potencial_val >= 20.0:
-                            semaforo = "🟢 COMPRAR"; nota = "Tendencia alcista + alto potencial."
-                        elif potencial_val >= 10.0:
-                            semaforo = "🟡 ACUMULAR"; nota = "Consolidando. Buen punto de entrada parcial."
-                        else:
-                            semaforo = "🔴 ESPERAR"; nota = "Sin margen de seguridad suficiente."
-                        
-                        datos_lista.append({
-                            "Ticker": tick,
-                            "Precio Actual": f"{p_actual:.2f} {sym}",
-                            "Precio Objetivo": f"{target_val:.2f} {sym}",
-                            "Potencial 4A": f"{potencial_val:.1f}%",
-                            "Ratio R:B": f"1 : {ratio_rb:.1f}",
-                            "Dividendo": formatear_dividendo(div_yield),
-                            "Interés Inst.": interes_inst,
-                            "Pct Inst.": pct_inst_txt,
-                            "Market Cap": mcap_txt,
-                            "Estrategia": semaforo,
-                            "Nota": nota
-                        })
-                    except:
-                        continue
-                
-                barra.empty()
-                
-                if datos_lista:
-                    st.dataframe(pd.DataFrame(datos_lista), use_container_width=True)
-                    
-                    c1, c2, c3 = st.columns(3)
-                    comprar = len([d for d in datos_lista if d["Estrategia"] == "🟢 COMPRAR"])
-                    acumular = len([d for d in datos_lista if d["Estrategia"] == "🟡 ACUMULAR"])
-                    esperar = len([d for d in datos_lista if d["Estrategia"] == "🔴 ESPERAR"])
-                    c1.metric("🟢 COMPRAR", comprar)
-                    c2.metric("🟡 ACUMULAR", acumular)
-                    c3.metric("🔴 ESPERAR", esperar)
-                    
-                    st.info(f"💡 **Consejo:** Prioriza las 🟢 para posiciones iniciales y 🟡 para ampliar gradualmente.")
-        else:
-            st.info("Lista vacía.")
-
-    st.write("---")
-    st.write("### 🔍 Ficha Individual")
-    accion = st.text_input("Ticker a analizar:", "KLAC", key="input_ind")
-    
-    if accion:
-        accion = accion.upper().strip()
-        try:
-            with st.spinner(f"Cargando {accion}..."):
-                t_obj = yf.Ticker(accion)
-                datos_hist = t_obj.history(period="2y", actions=True)
-            
-            if datos_hist.empty or len(datos_hist) < 200:
-                st.warning("Datos insuficientes.")
-            else:
-                datos_hist['MM50'] = datos_hist['Close'].rolling(50).mean()
-                datos_hist['MM200'] = datos_hist['Close'].rolling(200).mean()
-                dv = datos_hist.iloc[-252:]
-                p_act = dv['Close'].iloc[-1]
-                p_50 = dv['MM50'].iloc[-1]
-                p_200 = dv['MM200'].iloc[-1]
-                p_min = dv['Close'].iloc[-50:].min()
-                
-                target, dy, mon, pct_inst, num_inst, market_cap, sector = obtener_info_segura(accion)
-                if target is None:
-                    try:
-                        inf = t_obj.info
-                        target = inf.get('targetMedianPrice', None)
-                        dy = inf.get('dividendYield', None)
-                        mon = inf.get('currency', detectar_moneda(accion))
-                        pct_inst = inf.get('heldPercentInstitutions', None)
-                        market_cap = inf.get('marketCap', None)
-                        sector = inf.get('sector', None)
-                        if dy and dy > 1.0:
-                            dy = dy / 100.0
-                    except:
-                        target = None; dy = None; mon = detectar_moneda(accion)
-                        pct_inst = None; market_cap = None; sector = None
-                
-                if dy is None or dy == 0:
-                    dy = calcular_dividend_yield(dv, p_act, accion)
-                if target is None or target == 0:
-                    target = p_act * 1.25
-                
-                pot = ((target - p_act) / p_act) * 100
-                riesgo = max(0.5, ((p_act - p_min) / p_act) * 100)
-                rb = pot / riesgo
-                
-                tendencia_vol, _ = calcular_tendencia_volumen(dv)
-                volumen_hf = "🔥 ALTO" if dv['Volume'].iloc[-1] > dv['Volume'].iloc[-21:-1].mean() * 1.15 else "🟢 NORMAL"
-                interes_inst = calcular_interes_institucional(volumen_hf, pct_inst, tendencia_vol)
-                
-                sym = simbolo_moneda(mon)
-                pct_inst_txt = f"{pct_inst*100:.1f}%" if pct_inst else "N/A"
-                mcap_txt = formatear_market_cap(market_cap)
-                
-                diag = "COMPRAR" if p_act > p_200 and p_act > p_50 else ("ACUMULAR" if p_act > p_200 else "ESPERAR")
-                
-                st.write("#### 📊 Métricas Clave")
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric("Precio", f"{p_act:.2f} {sym}")
-                c2.metric("Potencial 4A", f"{pot:.1f}%")
-                c3.metric("R:B", f"1 : {rb:.1f}")
-                c4.metric("Estrategia", diag)
-                
-                st.write("#### 🏦 Perfil Institucional")
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Interés Inst.", interes_inst)
-                c2.metric("% Institucional", pct_inst_txt)
-                c3.metric("Market Cap", mcap_txt)
-                
-                st.write(f"**Sector:** {sector if sector else 'N/A'}")
-                
-                c1, c2, c3 = st.columns(3)
-                c1.metric("MM50", f"{p_50:.2f} {sym}")
-                c2.metric("MM200", f"{p_200:.2f} {sym}")
-                c3.metric("Dividendo", formatear_dividendo(dy))
-                
-                dg = dv[['Close', 'MM50', 'MM200']]
-                dg.columns = ['Precio', 'MM 50D', 'MM 200D']
-                st.line_chart(dg)
-                
-                with st.expander("📋 Datos históricos"):
-                    st.dataframe(dv.tail(20)[['Open', 'High', 'Low', 'Close', 'Volume']], use_container_width=True)
-                    
-        except Exception as e:
-            st.error(f"Error: {e}")
-
-# ============================================================================
-# PESTAÑA 3: CONFIGURACIÓN
-# ============================================================================
-with pestaña3:
-    st.subheader("⚙️ Configuración de Listas")
-    with st.form("crear_lista", clear_on_submit=True):
-        nombre = st.text_input("Nueva lista:").strip()
-        if st.form_submit_button("✨ Crear"):
-            if nombre and nombre not in st.session_state.listas_guardadas:
-                st.session_state.listas_guardadas[nombre] = []
-                guardar_listas(); st.success(f"Lista '{nombre}' creada."); st.rerun()
-            elif nombre in st.session_state.listas_guardadas:
-                st.warning("Ya existe.")
-    
-    c1, c2 = st.columns([3, 1])
-    with c1:
-        eliminar = st.selectbox("Eliminar lista:", list(st.session_state.listas_guardadas.keys()), key="del")
-    with c2:
-        st.write("##")
-        if st.button("💥 Eliminar"):
-            del st.session_state.listas_guardadas[eliminar]
-            guardar_listas(); st.success("Eliminada."); st.rerun()
-    
-    editar = st.selectbox("Editar lista:", list(st.session_state.listas_guardadas.keys()), key="edit")
-    if editar:
-        tickers = st.session_state.listas_guardadas[editar]
-        c1, c2 = st.columns([3, 1])
-        with c1:
-            nuevo = st.text_input("Añadir ticker:", key="add").upper().strip()
-        with c2:
-            st.write("##")
-            if st.button("📥 Añadir"):
-                if nuevo and nuevo not in tickers:
-                    tickers.append(nuevo)
-                    st.session_state.listas_guardadas[editar] = tickers
-                    guardar_listas(); st.success(f"{nuevo} añadido."); st.rerun()
-        
-        c1, c2 = st.columns([3, 1])
-        with c1:
-            borrar = st.selectbox("Eliminar ticker:", ["Ninguno"] + tickers, key="rem")
-        with c2:
-            st.write("##")
-            if st.button("🗑️ Eliminar"):
-                if borrar != "Ninguno":
-                    tickers.remove(borrar)
-                    st.session_state.listas_guardadas[editar] = tickers
-                    guardar_listas(); st.success(f"{borrar} eliminado."); st.rerun()
-        
-        st.write(f"**{len(tickers)} activos:**")
-        if tickers:
-            st.dataframe(pd.DataFrame(tickers, columns=["Ticker"]), use_container_width=True)
+                        pct_inst_txt = f"{pct_inst*100:.
