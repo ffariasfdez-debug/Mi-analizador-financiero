@@ -183,6 +183,136 @@ def calcular_interes_institucional(volumen_hf, pct_institucional, tendencia_vol)
     else:
         return "🎯 DÉBIL"
 
+def generar_veredicto(fila):
+    """
+    Genera un veredicto contextual para cada acción basado en TODAS sus métricas.
+    """
+    ticker = fila['Ticker']
+    potencial = float(fila['Potencial 4Años'].replace('%', '')) if isinstance(fila['Potencial 4Años'], str) else 0
+    ratio_rb = fila['Ratio R:B']
+    interes = fila['Interés Inst.']
+    pct_inst = fila['Pct Institucional']
+    crecimiento = float(fila['Crecimiento Business'].replace('🚀 ', '').replace('%', '')) if isinstance(fila['Crecimiento Business'], str) else 0
+    
+    # Extraer ratio numérico
+    try:
+        rb_valor = float(ratio_rb.split(':')[1].strip()) if ':' in str(ratio_rb) else 0
+    except:
+        rb_valor = 0
+    
+    veredictos = []
+    
+    # Análisis de potencial
+    if potencial > 100:
+        veredictos.append("🚀 Potencial explosivo")
+    elif potencial > 50:
+        veredictos.append("📈 Alto potencial")
+    elif potencial > 20:
+        veredictos.append("📊 Potencial moderado")
+    else:
+        veredictos.append("⚠️ Potencial limitado")
+    
+    # Análisis institucional
+    if "FUERTE" in interes:
+        veredictos.append("instituciones acumulando")
+    elif "MODERADO" in interes:
+        veredictos.append("interés estable")
+    else:
+        veredictos.append("sin respaldo institucional")
+    
+    # Análisis riesgo/beneficio
+    if rb_valor > 3:
+        veredictos.append("excelente R:B")
+    elif rb_valor > 1.5:
+        veredictos.append("buen R:B")
+    else:
+        veredictos.append("R:B ajustado")
+    
+    return " | ".join(veredictos)
+
+def analizar_cartera_global(df):
+    """
+    Analiza la cartera completa y genera recomendaciones específicas.
+    """
+    if df.empty:
+        return []
+    
+    recomendaciones = []
+    
+    # 1. Análisis de concentración
+    tickers = df['Ticker'].tolist()
+    
+    # 2. Análisis de potencial medio
+    potenciales = []
+    for _, fila in df.iterrows():
+        try:
+            p = float(fila['Potencial 4Años'].replace('%', '')) if isinstance(fila['Potencial 4Años'], str) else 0
+            potenciales.append(p)
+        except:
+            pass
+    
+    potencial_medio = sum(potenciales) / len(potenciales) if potenciales else 0
+    
+    if potencial_medio > 80:
+        recomendaciones.append(f"✅ **Potencial medio del {potencial_medio:.0f}%**: Cartera muy agresiva y orientada a crecimiento. Adecuada para tu horizonte de 4 años.")
+    elif potencial_medio > 40:
+        recomendaciones.append(f"⚖️ **Potencial medio del {potencial_medio:.0f}%**: Balance entre crecimiento y seguridad.")
+    else:
+        recomendaciones.append(f"🛡️ **Potencial medio del {potencial_medio:.0f}%**: Cartera conservadora. Considera añadir más tech/robótica.")
+    
+    # 3. Análisis de institucional
+    fuertes = sum(1 for _, f in df.iterrows() if "FUERTE" in str(f.get('Interés Inst.', '')))
+    moderados = sum(1 for _, f in df.iterrows() if "MODERADO" in str(f.get('Interés Inst.', '')))
+    
+    if fuertes >= 5:
+        recomendaciones.append(f"🏦 **{fuertes} de {len(df)} con interés institucional FUERTE**: Los fondos confían en tu selección. Buena señal de validación.")
+    elif fuertes + moderados >= 5:
+        recomendaciones.append(f"🏦 **{fuertes + moderados} de {len(df)} con respaldo institucional**: Base sólida, pero algunas carecen de respaldo mayoritario.")
+    else:
+        recomendaciones.append(f"⚠️ **Poco respaldo institucional**: La mayoría de tus acciones no tienen fuerte seguimiento de fondos. Mayor riesgo pero también mayor recompensa potencial.")
+    
+    # 4. Análisis de diversificación implícito
+    sectores_detectados = set()
+    for tick in tickers:
+        try:
+            _, _, _, _, _, _, sector = obtener_info_segura(tick)
+            if sector:
+                sectores_detectados.add(sector)
+        except:
+            pass
+    
+    if len(sectores_detectados) >= 3:
+        recomendaciones.append(f"🔄 **Diversificación en {len(sectores_detectados)} sectores**: Buena cobertura. No todo depende de un solo sector.")
+    else:
+        recomendaciones.append(f"🎯 **Concentrado en pocos sectores**: Alta correlación entre tus activos. Si cae la robótica, cae toda la cartera.")
+    
+    # 5. Recomendación de acción
+    recomendaciones.append("---")
+    recomendaciones.append("**💡 Próximos pasos recomendados:**")
+    
+    if len(df) < 10:
+        recomendaciones.append(f"• Tienes {len(df)}/10 posiciones. Considera completar el cupo para diversificar.")
+    
+    # Buscar la peor posición
+    peor_ratio = 999
+    peor_ticker = ""
+    for _, fila in df.iterrows():
+        try:
+            rb = float(fila['Ratio R:B'].split(':')[1].strip()) if ':' in str(fila['Ratio R:B']) else 999
+            if rb < peor_ratio:
+                peor_ratio = rb
+                peor_ticker = fila['Ticker']
+        except:
+            pass
+    
+    if peor_ticker and peor_ratio < 1.0:
+        recomendaciones.append(f"• **{peor_ticker}** tiene el peor R:B (1:{peor_ratio:.1f}). Reevalúa en 90 días o considera sustituir.")
+    
+    recomendaciones.append("• Mantén el candado de 90 días. No tomes decisiones impulsivas con pérdidas puntuales.")
+    recomendaciones.append("• Revisa esta cartera una vez por semana, no diariamente.")
+    
+    return recomendaciones
+
 def formatear_dividendo(dy):
     if dy is None or dy == 0:
         return "❌ 0%"
@@ -538,7 +668,7 @@ with pestaña1:
             status_text.empty()
 
     # ============================================================================
-    # MOSTRAR CARTERA CON TODAS LAS MÉTRICAS EN UNA PANTALLA
+    # MOSTRAR CARTERA CON VEREDICTO POR ACCIÓN
     # ============================================================================
     df_mostrar = st.session_state.cartera_compras.copy()
     caja_libre = 30000.0
@@ -585,12 +715,15 @@ with pestaña1:
 
         df_mostrar["Rendimiento Actual (P&L)"] = lista_pnl_formateada
         
-        # TODAS las columnas visibles en la tabla principal
+        # GENERAR VEREDICTO CONTEXTUAL PARA CADA ACCIÓN
+        df_mostrar["📝 Veredicto"] = df_mostrar.apply(generar_veredicto, axis=1)
+        
+        # Columnas finales
         columnas_mostrar = [
             "Ticker", "Acciones", "Precio Entrada", "Rendimiento Actual (P&L)", 
             "Crecimiento Business", "Potencial 4Años", "Ratio R:B", 
             "Dividendo", "Interés Inst.", "Pct Institucional", "Market Cap",
-            "Capital Invertido", "Fecha Compra", "Candado"
+            "📝 Veredicto", "Capital Invertido", "Fecha Compra", "Candado"
         ]
         columnas_existentes = [c for c in columnas_mostrar if c in df_mostrar.columns]
         df_final_ui = df_mostrar[columnas_existentes]
@@ -610,32 +743,28 @@ with pestaña1:
     st.write("### 📊 Cartera a 4 Años")
     if not df_mostrar.empty:
         st.dataframe(df_final_ui, use_container_width=True)
-        st.success("💾 Cartera guardada. Revisa semanalmente, no diariamente.")
+        st.success("💾 Cartera guardada.")
     else:
         st.info("Cartera vacía. Ejecuta el bot para empezar a construir.")
 
-    # GUÍA DE INTERPRETACIÓN VISIBLE DIRECTAMENTE (sin desplegable)
-    st.write("---")
-    st.write("### 📖 Guía de Interpretación para Inversor a 4 Años")
-    
-    col_g1, col_g2, col_g3 = st.columns(3)
-    
-    with col_g1:
-        st.write("**🎯 Interés Institucional**")
-        st.write("• **FUERTE**: Fondos acumulando. Confianza para largo plazo.")
-        st.write("• **MODERADO**: Interés estable. Empresa consolidada.")
-        st.write("• **DÉBIL**: Poco seguimiento. Oportunidad temprana o declive.")
-    
-    with col_g2:
-        st.write("**📈 Potencial 4Años**")
-        st.write("• Estimación de revalorización basada en target de analistas.")
-        st.write("• No es garantía, indica consenso del mercado.")
-        st.write("• >100% = alto potencial | <20% = conservador")
-    
-    with col_g3:
-        st.write("**⚖️ Ratio R:B & Market Cap**")
-        st.write("• **R:B**: Cuánto ganas por cada $ arriesgado. >1:3 es excelente.")
-        st.write("• **Market Cap**: Tamaño empresa. >10B = estable, <1B = especulativo")
+    # ============================================================================
+    # ANÁLISIS GLOBAL DE TU CARTERA (CONTEXUAL Y ESPECÍFICO)
+    # ============================================================================
+    if not df_mostrar.empty:
+        st.write("---")
+        st.write("### 🧠 Análisis de tu Cartera")
+        
+        recomendaciones = analizar_cartera_global(df_mostrar)
+        
+        for rec in recomendaciones:
+            if rec.startswith("---"):
+                st.write("---")
+            elif rec.startswith("**"):
+                st.write(rec)
+            else:
+                st.write(rec)
+        
+        st.info("📅 **Recordatorio:** Revisa esta cartera una vez por semana. No tomes decisiones impulsivas antes del candado de 90 días.")
 
 # ============================================================================
 # PESTAÑA 2: ANALIZADOR TÉCNICO
@@ -684,7 +813,6 @@ with pestaña2:
                         
                         precio_60d = h['Close'].iloc[-60] if len(h) >= 60 else h['Close'].iloc[0]
                         crec_pct = ((p_actual - precio_60d) / precio_60d) * 100
-                        
                         if target_val is None or target_val == 0:
                             potencial_val = max(20.0, crec_pct * 1.12)
                             target_val = p_actual * (1 + potencial_val/100)
