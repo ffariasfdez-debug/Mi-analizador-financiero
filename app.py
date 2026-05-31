@@ -357,21 +357,6 @@ with pestaña1:
                 st.success("✅ Monedas actualizadas.")
                 st.rerun()
 
-    # Mostrar estado de monedas
-    if not st.session_state.cartera_compras.empty:
-        st.write("---")
-        st.write("**💱 Monedas Detectadas:**")
-        monedas_resumen = {}
-        for _, fila in st.session_state.cartera_compras.iterrows():
-            tick = fila['Ticker']
-            mon = fila.get('Moneda', '???')
-            monedas_resumen[tick] = mon
-        cols = st.columns(min(len(monedas_resumen), 10))
-        for i, (tick, mon) in enumerate(monedas_resumen.items()):
-            sym = simbolo_moneda(mon)
-            with cols[i % len(cols)]:
-                st.write(f"**{tick}**: {mon} {sym}")
-
     # ============================================================================
     # EJECUCIÓN DEL BOT
     # ============================================================================
@@ -415,20 +400,17 @@ with pestaña1:
                     volumen_actual = historial['Volume'].iloc[-1]
                     media_volumen_20 = historial['Volume'].iloc[-21:-1].mean()
                     
-                    # Filtros de tendencia (para buy & hold)
                     if precio_actual <= media_200:
                         continue
                     if precio_actual < (media_30 * 0.98):
                         continue
                     
-                    # Crecimiento anualizado (últimos 60 días como proxy)
                     precio_hace_60d = historial['Close'].iloc[-60]
                     crecimiento_precio = ((precio_actual - precio_hace_60d) / precio_hace_60d) * 100
                     crecimiento_porcentaje = max(22.5, round(crecimiento_precio, 1))
                     if crecimiento_porcentaje < 20.0:
                         continue
                     
-                    # Datos extendidos con info institucional y empresa
                     target_estimado, div_yield, moneda_detectada, pct_inst, num_inst, market_cap, sector = obtener_info_segura(tick)
                     
                     if target_estimado is None:
@@ -456,19 +438,16 @@ with pestaña1:
                     if div_yield is None or div_yield == 0:
                         div_yield = calcular_dividend_yield(historial, precio_actual, tick)
                     
-                    # Potencial a 4 años
                     if target_estimado is None or target_estimado == 0:
                         potencial_4a = crecimiento_porcentaje * 1.18
                     else:
                         potencial_4a = ((target_estimado - precio_actual) / precio_actual) * 100
                     
-                    # Riesgo/suelo (cuánto puede caer desde aquí)
                     riesgo_suelo = ((precio_actual - p_minimo_50) / precio_actual) * 100
                     if riesgo_suelo <= 0:
                         riesgo_suelo = 0.5
                     ratio_rb_calc = potencial_4a / riesgo_suelo
                     
-                    # Volumen e institucional
                     fuerza_volumen = "🔥 ALTO" if volumen_actual > (media_volumen_20 * 1.15) else "🟢 NORMAL"
                     tendencia_vol, _ = calcular_tendencia_volumen(historial)
                     interes_inst = calcular_interes_institucional(fuerza_volumen, pct_inst, tendencia_vol)
@@ -534,8 +513,6 @@ with pestaña1:
                         "Ratio R:B": f"1 : {fila['Ratio R:B']:.1f}",
                         "Dividendo": formatear_dividendo(fila["Dividendo"]),
                         "Interés Inst.": fila["Interés Inst."],
-                        "Volumen H.F.": fila["Volumen H.F."],
-                        "Tendencia Vol": fila["Tendencia Vol"],
                         "Pct Institucional": pct_inst_txt,
                         "Market Cap": mcap_txt,
                         "Capital Invertido Base": max_por_accion,
@@ -561,7 +538,7 @@ with pestaña1:
             status_text.empty()
 
     # ============================================================================
-    # MOSTRAR CARTERA - OPTIMIZADO PARA BUY & HOLD 4 AÑOS
+    # MOSTRAR CARTERA CON TODAS LAS MÉTRICAS EN UNA PANTALLA
     # ============================================================================
     df_mostrar = st.session_state.cartera_compras.copy()
     caja_libre = 30000.0
@@ -575,7 +552,7 @@ with pestaña1:
 
         lista_activos_cartera = df_mostrar["Ticker"].tolist()
         
-        # Actualizar precios (una vez por semana es suficiente para buy & hold)
+        # Actualizar precios
         precios_vivos = {}
         with st.spinner("🔄 Actualizando precios..."):
             for tick in lista_activos_cartera:
@@ -608,7 +585,7 @@ with pestaña1:
 
         df_mostrar["Rendimiento Actual (P&L)"] = lista_pnl_formateada
         
-        # Columnas optimizadas para buy & hold (sin datos intradía irrelevantes)
+        # TODAS las columnas visibles en la tabla principal
         columnas_mostrar = [
             "Ticker", "Acciones", "Precio Entrada", "Rendimiento Actual (P&L)", 
             "Crecimiento Business", "Potencial 4Años", "Ratio R:B", 
@@ -633,34 +610,32 @@ with pestaña1:
     st.write("### 📊 Cartera a 4 Años")
     if not df_mostrar.empty:
         st.dataframe(df_final_ui, use_container_width=True)
-        
-        # Leyenda para inversor de largo plazo
-        with st.expander("📖 Guía para Inversor a 4 Años"):
-            st.write("""
-            **🎯 Interés Institucional:**
-            - **FUERTE**: Los fondos están acumulando. Señal de confianza para largo plazo.
-            - **MODERADO**: Interés estable. Empresa consolidada.
-            - **DÉBIL**: Poco seguimiento institucional. Puede ser oportunidad temprana o valor en declive.
-            
-            **Potencial 4Años:**
-            - Estimación de revalorización basada en target de analistas o tendencia.
-            - No es garantía, pero indica el consenso del mercado.
-            
-            **Ratio R:B (Riesgo/Beneficio):**
-            - Cuanto más alto, mejor. Indica cuánto puedes ganar por cada $ arriesgado.
-            - >1:3 es excelente para buy & hold.
-            
-            **Market Cap:**
-            - Tamaño de la empresa. Las grandes (>10B) son más estables.
-            - Las pequeñas tienen más potencial pero más riesgo.
-            
-            **Candado 🔒:**
-            - Fecha mínima para reconsiderar la posición (90 días).
-            - Evita decisiones impulsivas. El verdadero valor se crea en años, no días.
-            """)
         st.success("💾 Cartera guardada. Revisa semanalmente, no diariamente.")
     else:
         st.info("Cartera vacía. Ejecuta el bot para empezar a construir.")
+
+    # GUÍA DE INTERPRETACIÓN VISIBLE DIRECTAMENTE (sin desplegable)
+    st.write("---")
+    st.write("### 📖 Guía de Interpretación para Inversor a 4 Años")
+    
+    col_g1, col_g2, col_g3 = st.columns(3)
+    
+    with col_g1:
+        st.write("**🎯 Interés Institucional**")
+        st.write("• **FUERTE**: Fondos acumulando. Confianza para largo plazo.")
+        st.write("• **MODERADO**: Interés estable. Empresa consolidada.")
+        st.write("• **DÉBIL**: Poco seguimiento. Oportunidad temprana o declive.")
+    
+    with col_g2:
+        st.write("**📈 Potencial 4Años**")
+        st.write("• Estimación de revalorización basada en target de analistas.")
+        st.write("• No es garantía, indica consenso del mercado.")
+        st.write("• >100% = alto potencial | <20% = conservador")
+    
+    with col_g3:
+        st.write("**⚖️ Ratio R:B & Market Cap**")
+        st.write("• **R:B**: Cuánto ganas por cada $ arriesgado. >1:3 es excelente.")
+        st.write("• **Market Cap**: Tamaño empresa. >10B = estable, <1B = especulativo")
 
 # ============================================================================
 # PESTAÑA 2: ANALIZADOR TÉCNICO
@@ -721,7 +696,6 @@ with pestaña2:
                             riesgo = 0.5
                         ratio_rb = potencial_val / riesgo
                         
-                        # Métricas institucionales
                         tendencia_vol, _ = calcular_tendencia_volumen(h)
                         volumen_hf = "🔥 ALTO" if h['Volume'].iloc[-1] > h['Volume'].iloc[-21:-1].mean() * 1.15 else "🟢 NORMAL"
                         interes_inst = calcular_interes_institucional(volumen_hf, pct_inst, tendencia_vol)
@@ -758,7 +732,6 @@ with pestaña2:
                 if datos_lista:
                     st.dataframe(pd.DataFrame(datos_lista), use_container_width=True)
                     
-                    # Resumen por estrategia
                     c1, c2, c3 = st.columns(3)
                     comprar = len([d for d in datos_lista if d["Estrategia"] == "🟢 COMPRAR"])
                     acumular = len([d for d in datos_lista if d["Estrategia"] == "🟡 ACUMULAR"])
