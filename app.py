@@ -454,9 +454,92 @@ if "cartera_compras" not in st.session_state:
 if "params_bot" not in st.session_state:
     st.session_state.params_bot = {
         "max_por_accion": 1000,
-        "tope_semanal": 10000,
-        "max_activos_cartera": 10
+        "tope_semanal": 5000,
+        "max_activos_cartera": 16
     }
+
+# Seguimiento de compras semanales
+ARCHIVO_COMPRAS_SEMANA = "compras_semana.json"
+
+if "compras_semana" not in st.session_state:
+    if os.path.exists(ARCHIVO_COMPRAS_SEMANA):
+        try:
+            with open(ARCHIVO_COMPRAS_SEMANA, "r") as f:
+                st.session_state.compras_semana = json.load(f)
+        except:
+            st.session_state.compras_semana = {}
+    else:
+        st.session_state.compras_semana = {}
+
+# Obtener semana actual (año-semana)
+from datetime import datetime
+semana_actual = datetime.now().strftime("%Y-W%U")
+
+if semana_actual not in st.session_state.compras_semana:
+    st.session_state.compras_semana[semana_actual] = {
+        "compras_realizadas": 0,
+        "gastado": 0.0,
+        "tickers_comprados": []
+    }
+
+def guardar_compras_semana():
+    with open(ARCHIVO_COMPRAS_SEMANA, "w") as f:
+        json.dump(st.session_state.compras_semana, f)
+
+def get_compras_semana_actual():
+    semana = datetime.now().strftime("%Y-W%U")
+    if semana not in st.session_state.compras_semana:
+        st.session_state.compras_semana[semana] = {
+            "compras_realizadas": 0,
+            "gastado": 0.0,
+            "tickers_comprados": []
+        }
+    return st.session_state.compras_semana[semana]
+
+def puede_comprar_esta_semana(cantidad=1, costo=1000):
+    datos = get_compras_semana_actual()
+    tope = st.session_state.params_bot["tope_semanal"]
+    max_activos = st.session_state.params_bot["max_activos_cartera"]
+
+    # Check weekly spending limit
+    if datos["gastado"] + costo > tope:
+        return False, f"Tope semanal alcanzado: {datos['gastado']:.0f}/{tope}"
+
+    # Check weekly purchase count (max 5 per week)
+    if datos["compras_realizadas"] + cantidad > 5:
+        return False, f"Máximo 5 compras semanales alcanzado: {datos['compras_realizadas']}/5"
+
+    return True, "OK"
+
+def registrar_compra(ticker, costo=1000):
+    datos = get_compras_semana_actual()
+    datos["compras_realizadas"] += 1
+    datos["gastado"] += costo
+    datos["tickers_comprados"].append(ticker)
+    guardar_compras_semana()
+
+def encontrar_peor_posicion(df_cartera):
+    """Encuentra la posición con peor ratio R:B para vender."""
+    if df_cartera.empty:
+        return None
+
+    peor_ratio = 999
+    peor_ticker = None
+
+    for _, fila in df_cartera.iterrows():
+        try:
+            rb_str = str(fila.get('Ratio R:B', '1 : 1.0'))
+            if ':' in rb_str:
+                partes = rb_str.split(':')
+                if len(partes) > 1:
+                    rb = float(partes[1].strip().split()[0])
+                    if rb < peor_ratio:
+                        peor_ratio = rb
+                        peor_ticker = fila['Ticker']
+        except:
+            continue
+
+    return peor_ticker
 
 # ============================================================================
 # 4. MENÚ DE PESTAÑAS
@@ -510,6 +593,9 @@ with pestaña1:
                 os.remove(ARCHIVO_CARTERA)
             if os.path.exists(ARCHIVO_LISTAS):
                 os.remove(ARCHIVO_LISTAS)
+            if os.path.exists(ARCHIVO_COMPRAS_SEMANA):
+                os.remove(ARCHIVO_COMPRAS_SEMANA)
+            st.session_state.compras_semana = {}
             st.session_state.listas_guardadas = {
                 "Semiconductores Premium": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "AVGO", "MRVL", "TSM"],
                 "Robótica Pura y Satélites": [
@@ -525,7 +611,7 @@ with pestaña1:
             }
             st.cache_data.clear()
             st.cache_resource.clear()
-            st.success("¡Cartera y caché completamente reseteados!")
+            st.success("¡Cartera, caché y registro semanal completamente reseteados!")
             time.sleep(1)
             st.rerun()
     with col_btn3:
@@ -674,36 +760,87 @@ with pestaña1:
                 tickers_en_cartera = set(st.session_state.cartera_compras["Ticker"].tolist()) if not st.session_state.cartera_compras.empty else set()
                 
                 # Contador de posiciones compradas en ESTA ejecución
+                # Contador de posiciones compradas en ESTA ejecución
+                # Contador de posiciones compradas en ESTA ejecución
                 posiciones_nuevas_count = 0
-                
+                posiciones_vendidas = []
+                gastado_semana_actual = 0.0
+
                 for _, fila in df_ordenado.iterrows():
-                    # Total = cartera anterior + nuevas de hoy
-                    pos_act_total = (len(st.session_state.cartera_compras) if not st.session_state.cartera_compras.empty else 0) + posiciones_nuevas_count
-                    
-                    if pos_act_total >= max_activos_cartera:
-                        st.info(f"🛑 Máximo de {max_activos_cartera} activos alcanzado.")
+                    # Total = cartera anterior + nuevas de hoy - vendidas hoy
+                    pos_act_total = (len(st.session_state.cartera_compras) if not st.session_state.cartera_compras.empty else 0) + posiciones_nuevas_count - len(posiciones_vendidas)
+
+                    # Controlar tope semanal (máximo 5 compras = 5000)
+                    if gastado_semana_actual >= tope_semanal:
+                        st.info(f"🛑 Tope semanal de {tope_semanal:,.0f} alcanzado. Espera a la próxima semana.")
                         break
-                    
+
+                    # Controlar caja disponible
                     if caja_total_estrategia < max_por_accion:
                         st.info(f"🛑 Caja insuficiente: {caja_total_estrategia:.2f} < {max_por_accion}")
                         break
-                    
+
+                    # Si cartera llena (16 activos), buscar venta automática
+                    if pos_act_total >= max_activos_cartera:
+                        if not st.session_state.cartera_compras.empty:
+                            # Buscar la peor posición para vender (menor Ratio R:B y candado liberado)
+                            hoy = datetime.now()
+                            peor_idx = None
+                            peor_rb = 999.0
+
+                            for idx_c, row_c in st.session_state.cartera_compras.iterrows():
+                                # Verificar si candado de 90 días ya pasó
+                                fecha_candado_str = str(row_c.get('Candado', '')).replace('🔒 ', '').strip()
+                                try:
+                                    fecha_candado = datetime.strptime(fecha_candado_str, '%d/%m/%Y')
+                                    dias_restantes = (fecha_candado - hoy).days
+                                except:
+                                    dias_restantes = -1  # Si no hay fecha, asumir liberado
+
+                                if dias_restantes <= 0:  # Candado liberado
+                                    # Extraer ratio R:B
+                                    rb_str = str(row_c.get('Ratio R:B', '1 : 1.0'))
+                                    try:
+                                        if ':' in rb_str:
+                                            partes = rb_str.split(':')
+                                            if len(partes) > 1:
+                                                rb_val = float(partes[1].strip().split()[0])
+                                                if rb_val < peor_rb:
+                                                    peor_rb = rb_val
+                                                    peor_idx = idx_c
+                                    except:
+                                        pass
+
+                            if peor_idx is not None:
+                                ticker_vendido = st.session_state.cartera_compras.loc[peor_idx, 'Ticker']
+                                st.session_state.cartera_compras = st.session_state.cartera_compras.drop(peor_idx).reset_index(drop=True)
+                                posiciones_vendidas.append(ticker_vendido)
+                                st.success(f"🔄 Vendida {ticker_vendido} (peor R:B) para hacer hueco.")
+                                guardar_cartera()
+                                # Recalcular tickers en cartera
+                                tickers_en_cartera = set(st.session_state.cartera_compras["Ticker"].tolist()) if not st.session_state.cartera_compras.empty else set()
+                                pos_act_total -= 1
+                            else:
+                                st.warning(f"⚠️ Cartera llena ({max_activos_cartera} activos) y ninguna con candado liberado. No se puede comprar.")
+                                break
+
                     if fila["Ticker"] in tickers_en_cartera:
                         continue
-                    
+
                     caja_total_estrategia -= max_por_accion
+                    gastado_semana_actual += max_por_accion
                     posiciones_nuevas_count += 1
                     fecha_compra = datetime.now().strftime('%d/%m/%Y')
                     fecha_liberacion = (datetime.now() + timedelta(days=90)).strftime('%d/%m/%Y')
                     precio = fila["Precio Actual"]
                     if precio <= 0:
                         continue
-                    
+
                     cantidad = round(max_por_accion / precio, 4)
                     sym = fila["Simbolo"]
                     pct_inst_txt = f"{fila['Pct Institucional']*100:.1f}%" if fila['Pct Institucional'] else "N/A"
                     mcap_txt = formatear_market_cap(fila["Market Cap"])
-                    
+
                     posiciones_nuevas.append({
                         "Ticker": fila["Ticker"],
                         "Acciones": cantidad,
@@ -726,7 +863,7 @@ with pestaña1:
                     df_nuevas = pd.DataFrame(posiciones_nuevas)
                     st.session_state.cartera_compras = pd.concat([st.session_state.cartera_compras, df_nuevas], ignore_index=True) if not st.session_state.cartera_compras.empty else df_nuevas
                     guardar_cartera()
-                    st.success(f"✅ {len(posiciones_nuevas)} posiciones añadidas a la cartera.")
+                    st.success(f"✅ {len(posiciones_nuevas)} posiciones añadidas. Semana: {get_compras_semana_actual()['compras_realizadas']}/5 compras.")
                 else:
                     st.info("Sin nuevas posiciones.")
             else:
