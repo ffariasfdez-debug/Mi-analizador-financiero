@@ -508,8 +508,25 @@ with pestaña1:
             st.session_state.cartera_compras = pd.DataFrame()
             if os.path.exists(ARCHIVO_CARTERA):
                 os.remove(ARCHIVO_CARTERA)
+            if os.path.exists(ARCHIVO_LISTAS):
+                os.remove(ARCHIVO_LISTAS)
+            st.session_state.listas_guardadas = {
+                "Semiconductores Premium": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "AVGO", "MRVL", "TSM"],
+                "Robótica Pura y Satélites": [
+                    "ISRG", "ZBH", "STE", "ROK", "CGNX", "TER", 
+                    "ATS", "SYM", "GWW", "AME", "ADI", "FTV", "KEYS", "PTC", 
+                    "ANSS", "ROCK", "COHR", "DE", "CAT", "AVAV", "GE", "HON",
+                    "NVDA", "AMD", "ARM", "AVGO", "MRVL",
+                    "SNPS", "CDNS", "ANSS", "SPLK",
+                    "SYK", "MDT", "BSX"
+                ],
+                "Fotónica y Sensores": ["IPGP", "LITE", "COHR", "CGNX"],
+                "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR", "NVDA"]
+            }
             st.cache_data.clear()
-            st.success("¡Cartera reseteada!")
+            st.cache_resource.clear()
+            st.success("¡Cartera y caché completamente reseteados!")
+            time.sleep(1)
             st.rerun()
     with col_btn3:
         if st.button("🧹 Limpiar Duplicados"):
