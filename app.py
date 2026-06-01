@@ -673,14 +673,26 @@ with pestaña1:
                 df_ordenado = pd.DataFrame(candidatas_finalistas).sort_values(by="Potencial 4A", ascending=False)
                 tickers_en_cartera = set(st.session_state.cartera_compras["Ticker"].tolist()) if not st.session_state.cartera_compras.empty else set()
                 
+                # Contador de posiciones compradas en ESTA ejecución
+                posiciones_nuevas_count = 0
+                
                 for _, fila in df_ordenado.iterrows():
-                    pos_act = len(st.session_state.cartera_compras) if not st.session_state.cartera_compras.empty else 0
-                    if pos_act >= max_activos_cartera or caja_total_estrategia < max_por_accion:
+                    # Total = cartera anterior + nuevas de hoy
+                    pos_act_total = (len(st.session_state.cartera_compras) if not st.session_state.cartera_compras.empty else 0) + posiciones_nuevas_count
+                    
+                    if pos_act_total >= max_activos_cartera:
+                        st.info(f"🛑 Máximo de {max_activos_cartera} activos alcanzado.")
                         break
+                    
+                    if caja_total_estrategia < max_por_accion:
+                        st.info(f"🛑 Caja insuficiente: {caja_total_estrategia:.2f} < {max_por_accion}")
+                        break
+                    
                     if fila["Ticker"] in tickers_en_cartera:
                         continue
                     
                     caja_total_estrategia -= max_por_accion
+                    posiciones_nuevas_count += 1
                     fecha_compra = datetime.now().strftime('%d/%m/%Y')
                     fecha_liberacion = (datetime.now() + timedelta(days=90)).strftime('%d/%m/%Y')
                     precio = fila["Precio Actual"]
@@ -690,7 +702,7 @@ with pestaña1:
                     cantidad = round(max_por_accion / precio, 4)
                     sym = fila["Simbolo"]
                     pct_inst_txt = f"{fila['Pct Institucional']*100:.1f}%" if fila['Pct Institucional'] else "N/A"
-                    mcap_txt = formatear_market_cap(fila['Market Cap'])
+                    mcap_txt = formatear_market_cap(fila["Market Cap"])
                     
                     posiciones_nuevas.append({
                         "Ticker": fila["Ticker"],
@@ -710,7 +722,6 @@ with pestaña1:
                         "Candado": f"🔒 {fecha_liberacion}",
                         "Moneda": fila["Moneda"]
                     })
-                
                 if posiciones_nuevas:
                     df_nuevas = pd.DataFrame(posiciones_nuevas)
                     st.session_state.cartera_compras = pd.concat([st.session_state.cartera_compras, df_nuevas], ignore_index=True) if not st.session_state.cartera_compras.empty else df_nuevas
