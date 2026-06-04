@@ -1323,7 +1323,7 @@ with pestaña2:
                     st.write("#### 🏆 Top 5 Oportunidades de Entrada")
 
                     # Filtrar solo semáforo verde/amarillo
-                    df_filtrado = df_lista[df_lista["🚦 Semáforo"].str.contains("🟢|🟡", na=False)].copy()
+                    df_filtrado = df_lista[df_lista["🚦"].str.contains("🟢|🟡", na=False)].copy()
 
                     if not df_filtrado.empty:
                         # Calcular score de oportunidad de entrada
@@ -1342,8 +1342,8 @@ with pestaña2:
                             except: score += 1
 
                             # Semáforo verde = +2, amarillo = +1
-                            if "🟢" in str(row.get("🚦 Semáforo","")): score += 2
-                            elif "🟡" in str(row.get("🚦 Semáforo","")): score += 1
+                            if "🟢" in str(row.get("🚦","")): score += 2
+                            elif "🟡" in str(row.get("🚦","")): score += 1
 
                             # Ratio R:B alto = +2
                             try:
@@ -1366,7 +1366,7 @@ with pestaña2:
                         df_top = df_filtrado.sort_values(by="Score Entrada", ascending=False).head(5)
 
                         # Mostrar con score
-                        cols_mostrar = [c for c in ["Ticker", "Precio Actual", "Potencial Estimado", "Ratio R:B", "Dividendo", "Interés Inst.", "🚦 Semáforo", "Score Entrada"] if c in df_top.columns]
+                        cols_mostrar = [c for c in ["Ticker", "Precio Actual", "Potencial Estimado", "Ratio R:B", "Dividendo", "Interés Inst.", "🚦", "Score Entrada"] if c in df_top.columns]
                         st.dataframe(df_top[cols_mostrar], use_container_width=True)
                     else:
                         st.warning("Ninguna acción de la lista cumple los criterios para entrada ahora.")
