@@ -1291,14 +1291,57 @@ with pestaña2:
                     st.write(f"**{len(df_lista)} activos analizados**")
                     st.dataframe(df_lista, use_container_width=True)
 
-                    # Top 5 por potencial (solo semáforo verde o amarillo)
-                    st.write("#### 🏆 Top 5 por Potencial (Filtrado)")
-                    df_filtrado = df_lista[df_lista["🚦 Semáforo"].str.contains("🟢|🟡", na=False)]
+                    # Top 5 OPORTUNIDADES DE ENTRADA (mejor momento técnico + potencial)
+                    st.write("#### 🏆 Top 5 Oportunidades de Entrada")
+
+                    # Filtrar solo semáforo verde/amarillo
+                    df_filtrado = df_lista[df_lista["🚦 Semáforo"].str.contains("🟢|🟡", na=False)].copy()
+
                     if not df_filtrado.empty:
-                        df_top = df_filtrado.sort_values(by="Potencial Estimado", ascending=False).head(5)
-                        st.dataframe(df_top, use_container_width=True)
+                        # Calcular score de oportunidad de entrada
+                        # Más alto = mejor momento para entrar AHORA
+                        def calcular_score_entrada(row):
+                            score = 0
+
+                            # Potencial alto = +3 a +5 puntos
+                            try:
+                                pot = float(row["Potencial Estimado"].replace("%","").strip())
+                                if pot > 150: score += 5
+                                elif pot > 100: score += 4
+                                elif pot > 50: score += 3
+                                elif pot > 20: score += 2
+                                else: score += 1
+                            except: score += 1
+
+                            # Semáforo verde = +2, amarillo = +1
+                            if "🟢" in str(row.get("🚦 Semáforo","")): score += 2
+                            elif "🟡" in str(row.get("🚦 Semáforo","")): score += 1
+
+                            # Ratio R:B alto = +2
+                            try:
+                                rb_str = str(row.get("Ratio R:B","1 : 1.0"))
+                                if ":" in rb_str:
+                                    rb_val = float(rb_str.split(":")[1].strip().split()[0])
+                                    if rb_val > 3: score += 2
+                                    elif rb_val > 1.5: score += 1
+                            except: pass
+
+                            # Dividendo 0% = +1 (fiscalidad)
+                            if "❌ 0%" in str(row.get("Dividendo","")) or "0%" in str(row.get("Dividendo","")): score += 1
+
+                            # Interés institucional fuerte = +1
+                            if "FUERTE" in str(row.get("Interés Inst.","")): score += 1
+
+                            return score
+
+                        df_filtrado["Score Entrada"] = df_filtrado.apply(calcular_score_entrada, axis=1)
+                        df_top = df_filtrado.sort_values(by="Score Entrada", ascending=False).head(5)
+
+                        # Mostrar con score
+                        cols_mostrar = [c for c in ["Ticker", "Precio Actual", "Potencial Estimado", "Ratio R:B", "Dividendo", "Interés Inst.", "🚦 Semáforo", "Score Entrada"] if c in df_top.columns]
+                        st.dataframe(df_top[cols_mostrar], use_container_width=True)
                     else:
-                        st.warning("Ninguna acción de la lista cumple los criterios del semáforo.")
+                        st.warning("Ninguna acción de la lista cumple los criterios para entrada ahora.")
                 else:
                     st.warning("No se pudieron analizar activos de esta lista.")
         else:
