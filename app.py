@@ -743,7 +743,10 @@ with pestaña1:
                         "Market Cap": market_cap,
                         "Sector": sector,
                         "Moneda": moneda_detectada,
-                        "Simbolo": sym
+                        "Simbolo": sym,
+                        "RSI 14d": round(rsi_valor, 1),
+                        "Dist Máx 52s": f"{distancia_max_52s:.1f}%",
+                        "Alertas": alerta_txt
                     })
                 except:
                     continue
