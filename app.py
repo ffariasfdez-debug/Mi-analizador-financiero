@@ -1227,7 +1227,13 @@ with pestaña2:
                             potencial_val = max(20.0, crec_pct * 1.12)
                             target_val = p_actual * (1 + potencial_val/100)
                         else:
-                            potencial_val = ((target_val - p_actual) / p_actual) * 100
+                            potencial_raw = ((target_val - p_actual) / p_actual) * 100
+                            # Si el target del analista es menor que precio actual, usar crecimiento como proxy
+                            if potencial_raw < 0:
+                                potencial_val = max(20.0, crec_pct * 1.12)
+                                target_val = p_actual * (1 + potencial_val/100)
+                            else:
+                                potencial_val = potencial_raw
 
                         riesgo = ((p_actual - p_minimo) / p_actual) * 100
                         if riesgo <= 0:
@@ -1241,6 +1247,22 @@ with pestaña2:
                         sym = simbolo_moneda(moneda)
                         pct_inst_txt = f"{pct_inst*100:.1f}%" if pct_inst else "N/A"
                         mcap_txt = formatear_market_cap(market_cap)
+
+                        # Calcular semáforo para lista
+                        puntos_sem = 0
+                        if p_actual > p_media_50: puntos_sem += 1
+                        if p_actual > h['Close'].iloc[-200:].mean(): puntos_sem += 1
+                        if potencial_val > 50: puntos_sem += 1
+                        if ratio_rb > 2: puntos_sem += 1
+                        if volumen_hf == "🔥 ALTO": puntos_sem += 1
+                        if "FUERTE" in interes_inst or "MODERADO" in interes_inst: puntos_sem += 1
+
+                        if puntos_sem >= 5:
+                            semaforo = "🟢 COMPRA FUERTE"
+                        elif puntos_sem >= 3:
+                            semaforo = "🟡 COMPRA MODERADA"
+                        else:
+                            semaforo = "🔴 NO COMPRAR"
 
                         datos_lista.append({
                             "Ticker": tick,
@@ -1256,7 +1278,8 @@ with pestaña2:
                             "Market Cap": mcap_txt,
                             "Tendencia Vol": tendencia_vol,
                             "Sector": sector,
-                            "Moneda": moneda
+                            "Moneda": moneda,
+                            "🚦 Semáforo": semaforo
                         })
                     except Exception as e:
                         continue
@@ -1268,15 +1291,18 @@ with pestaña2:
                     st.write(f"**{len(df_lista)} activos analizados**")
                     st.dataframe(df_lista, use_container_width=True)
 
-                    # Top 5 por potencial
-                    st.write("#### 🏆 Top 5 por Potencial")
-                    df_top = df_lista.sort_values(by="Potencial Estimado", ascending=False).head(5)
-                    st.dataframe(df_top, use_container_width=True)
+                    # Top 5 por potencial (solo semáforo verde o amarillo)
+                    st.write("#### 🏆 Top 5 por Potencial (Filtrado)")
+                    df_filtrado = df_lista[df_lista["🚦 Semáforo"].str.contains("🟢|🟡", na=False)]
+                    if not df_filtrado.empty:
+                        df_top = df_filtrado.sort_values(by="Potencial Estimado", ascending=False).head(5)
+                        st.dataframe(df_top, use_container_width=True)
+                    else:
+                        st.warning("Ninguna acción de la lista cumple los criterios del semáforo.")
                 else:
                     st.warning("No se pudieron analizar activos de esta lista.")
         else:
             st.info("Lista vacía.")
-
 with pestaña3:
     st.subheader("⚙️ Gestión de Listas de Seguimiento")
 
