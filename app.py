@@ -1199,10 +1199,14 @@ with pestaña2:
             with st.spinner("Analizando universo..."):
                 datos_globales_p2 = descargar_datos_seguro(tickers_lista, period="1y", actions=True)
                 datos_lista = []
-                total = len(tickers_lista)
+                
                 barra = st.progress(0)
 
-                for idx, tick in enumerate(tickers_lista):
+                # Eliminar duplicados de la lista
+                tickers_unicos = list(dict.fromkeys(tickers_lista))
+                total = len(tickers_unicos)
+
+                for idx, tick in enumerate(tickers_unicos):
                     barra.progress(int((idx / total) * 100))
                     try:
                         h = extraer_historial(datos_globales_p2, tick)
@@ -1365,8 +1369,9 @@ with pestaña2:
                         df_filtrado["Score Entrada"] = df_filtrado.apply(calcular_score_entrada, axis=1)
                         df_top = df_filtrado.sort_values(by="Score Entrada", ascending=False).head(5)
 
-                        # Mostrar con score
-                        cols_mostrar = [c for c in ["Ticker", "Precio Actual", "Potencial Estimado", "Ratio R:B", "Dividendo", "Interés Inst.", "🚦", "Score Entrada"] if c in df_top.columns]
+                        # Mostrar columnas compactas
+                        cols_compactas = ["Ticker", "Precio", "Pot", "R:B", "Div", "RSI", "Max52", "Alert", "🚦", "Score Entrada"]
+                        cols_mostrar = [c for c in cols_compactas if c in df_top.columns]
                         st.dataframe(df_top[cols_mostrar], use_container_width=True)
                     else:
                         st.warning("Ninguna acción de la lista cumple los criterios para entrada ahora.")
