@@ -760,10 +760,17 @@ with pestaña1:
             
             if candidatas_finalistas:
                 df_ordenado = pd.DataFrame(candidatas_finalistas).sort_values(by="Potencial 4A", ascending=False)
+
+                # Mostrar candidatas compacto
+                if not df_ordenado.empty:
+                    st.write("#### 📊 Candidatas Analizadas")
+                    cols_compact = ["Ticker", "Precio Actual", "Potencial 4A", "Ratio R:B", 
+                                   "RSI 14d", "Dist Máx 52s", "Alertas", "Volumen H.F.", "Interés Inst."]
+                    cols_mostrar = [c for c in cols_compact if c in df_ordenado.columns]
+                    st.dataframe(df_ordenado[cols_mostrar], use_container_width=True)
+
                 tickers_en_cartera = set(st.session_state.cartera_compras["Ticker"].tolist()) if not st.session_state.cartera_compras.empty else set()
                 
-                # Contador de posiciones compradas en ESTA ejecución
-                # Contador de posiciones compradas en ESTA ejecución
                 # Contador de posiciones compradas en ESTA ejecución
                 posiciones_nuevas_count = 0
                 posiciones_vendidas = []
@@ -1247,6 +1254,21 @@ with pestaña2:
                         volumen_hf = "🔥 ALTO" if h['Volume'].iloc[-1] > h['Volume'].iloc[-21:-1].mean() * 1.15 else "🟢 NORMAL"
                         interes_inst = calcular_interes_institucional(volumen_hf, pct_inst, tendencia_vol, market_cap)
 
+                        # RSI y distancia a máximo 52s (informacional)
+                        try:
+                            delta = h['Close'].diff()
+                            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                            rs = gain / loss
+                            rsi_14 = 100 - (100 / (1 + rs))
+                            rsi_valor = rsi_14.iloc[-1]
+                            if pd.isna(rsi_valor): rsi_valor = 50
+                        except: rsi_valor = 50
+                        try:
+                            max_52s = h['Close'].max()
+                            distancia_max_52s = ((max_52s - p_actual) / max_52s) * 100
+                        except: distancia_max_52s = 0
+
                         sym = simbolo_moneda(moneda)
                         pct_inst_txt = f"{pct_inst*100:.1f}%" if pct_inst else "N/A"
                         mcap_txt = formatear_market_cap(market_cap)
@@ -1261,28 +1283,31 @@ with pestaña2:
                         if "FUERTE" in interes_inst or "MODERADO" in interes_inst: puntos_sem += 1
 
                         if puntos_sem >= 5:
-                            semaforo = "🟢 COMPRA FUERTE"
+                            semaforo = "🟢"
                         elif puntos_sem >= 3:
-                            semaforo = "🟡 COMPRA MODERADA"
+                            semaforo = "🟡"
                         else:
-                            semaforo = "🔴 NO COMPRAR"
+                            semaforo = "🔴"
+
+                        # Alertas compactas
+                        alertas = []
+                        if rsi_valor > 70: alertas.append("RSI+")
+                        if distancia_max_52s < 5: alertas.append("Max52")
+                        alerta_txt = "|".join(alertas) if alertas else "OK"
 
                         datos_lista.append({
                             "Ticker": tick,
-                            "Precio Actual": f"{p_actual:.2f} {sym}",
-                            "Media 50d": f"{p_media_50:.2f} {sym}",
-                            "Suelo 50d": f"{p_minimo:.2f} {sym}",
-                            "Potencial Estimado": f"{potencial_val:.1f}%",
-                            "Target": f"{target_val:.2f} {sym}",
-                            "Ratio R:B": f"1 : {ratio_rb:.1f}",
-                            "Dividendo": formatear_dividendo(div_yield),
-                            "Interés Inst.": interes_inst,
-                            "Pct Institucional": pct_inst_txt,
-                            "Market Cap": mcap_txt,
-                            "Tendencia Vol": tendencia_vol,
-                            "Sector": sector,
-                            "Moneda": moneda,
-                            "🚦 Semáforo": semaforo
+                            "Precio": f"{p_actual:.0f}",
+                            "Pot": f"{potencial_val:.0f}%",
+                            "R:B": f"1:{ratio_rb:.1f}",
+                            "Div": formatear_dividendo(div_yield),
+                            "RSI": f"{rsi_valor:.0f}",
+                            "Max52": f"{distancia_max_52s:.0f}%",
+                            "Alert": alerta_txt,
+                            "🚦": semaforo,
+                            "Vol": volumen_hf,
+                            "Inst": interes_inst,
+                            "MCap": mcap_txt
                         })
                     except Exception as e:
                         continue
