@@ -18,8 +18,6 @@ st.write("---")
 
 # ============================================================================
 # LISTAS DEFINITIVAS - Depuradas 2026-06-05
-# Sin duplicados, sin tickers muertos
-# Total: 103 tickers en 5 universos
 # ============================================================================
 
 LISTAS_DEFINITIVAS = {
@@ -53,7 +51,6 @@ LISTAS_DEFINITIVAS = {
 # ============================================================================
 
 def detectar_moneda(ticker):
-    """Detecta moneda por sufijo del ticker."""
     ticker_upper = ticker.upper().strip()
     sufijos_eur = ['.AS', '.PA', '.DE', '.BR', '.MI', '.MC', '.ST', '.HE', '.CO', '.OL', '.VI', '.LS', '.IR']
     for sufijo in sufijos_eur:
@@ -77,30 +74,25 @@ def comprobar_mercado_abierto():
 
 @st.cache_data(ttl=300)
 def obtener_info_segura(ticker):
-    """Un solo call a yFinance para obtener info clave."""
+    """Un solo call a yFinance."""
     try:
         t = yf.Ticker(ticker)
         info = t.info
         if not info or len(info) < 5:
             return None, None, detectar_moneda(ticker), None, None, None
-        
         target = info.get('targetMedianPrice', None)
         dy = info.get('dividendYield', None)
         moneda = info.get('currency', detectar_moneda(ticker))
         pct_inst = info.get('heldPercentInstitutions', None)
         market_cap = info.get('marketCap', None)
         sector = info.get('sector', None)
-        
-        # Normalizar dividend yield
         if dy is not None and dy > 1.0:
             dy = dy / 100.0
-            
         return target, dy, moneda, pct_inst, market_cap, sector
     except:
         return None, None, detectar_moneda(ticker), None, None, None
 
 def descargar_datos_seguro(tickers, period="1y", interval=None, actions=False):
-    """Descarga batch con fallback individual."""
     if isinstance(tickers, list):
         tickers_str = " ".join(tickers)
     else:
@@ -122,7 +114,6 @@ def descargar_datos_seguro(tickers, period="1y", interval=None, actions=False):
         return pd.DataFrame()
 
 def extraer_historial(datos_globales, ticker, period="1y"):
-    """Extrae historial de datos batch o descarga individual."""
     try:
         if not datos_globales.empty:
             niveles = datos_globales.columns.get_level_values(0)
@@ -140,7 +131,6 @@ def extraer_historial(datos_globales, ticker, period="1y"):
         return pd.DataFrame()
 
 def extraer_precio_actual(datos_minuto, ticker, historial):
-    """Extrae precio actual de datos minuto o historial."""
     try:
         if not datos_minuto.empty:
             niveles = datos_minuto.columns.get_level_values(0)
@@ -162,7 +152,6 @@ def extraer_precio_actual(datos_minuto, ticker, historial):
     return None
 
 def calcular_dividend_yield(historial, precio_actual, ticker):
-    """Calcula dividend yield desde historial o info."""
     try:
         _, dy, _, _, _, _ = obtener_info_segura(ticker)
         if dy is not None and dy > 0:
@@ -203,7 +192,6 @@ def formatear_pnl(ganancia_valor, ganancia_pct, moneda='USD'):
     return f"⬜ 0.00 {sym} (0.00%)"
 
 def calcular_dias_candado(fecha_candado_str):
-    """Calcula días restantes de candado."""
     try:
         fecha_candado = datetime.strptime(fecha_candado_str.replace('🔒 ', '').strip(), '%d/%m/%Y')
         hoy = datetime.now()
@@ -213,11 +201,9 @@ def calcular_dias_candado(fecha_candado_str):
         return -999
 
 def esta_candado_liberado(fecha_candado_str):
-    """True si el candado ya se liberó (días <= 0)."""
     return calcular_dias_candado(fecha_candado_str) <= 0
 
 def generar_veredicto(fila):
-    """Genera veredicto textual para una posición."""
     try:
         ticker = str(fila.get('Ticker', 'N/A'))
         potencial_raw = fila.get('Potencial 4Años', '0%')
@@ -225,7 +211,6 @@ def generar_veredicto(fila):
             potencial = float(potencial_raw.replace('%', '').strip()) if '%' in potencial_raw else 0
         else:
             potencial = float(potencial_raw) if pd.notna(potencial_raw) else 0
-        
         ratio_rb = str(fila.get('Ratio R:B', '1 : 1.0'))
         rb_valor = 1.0
         try:
@@ -235,13 +220,6 @@ def generar_veredicto(fila):
                     rb_valor = float(partes[1].strip().split()[0])
         except:
             rb_valor = 1.0
-            
-        crecimiento_raw = fila.get('Crecimiento Business', '0%')
-        if isinstance(crecimiento_raw, str):
-            crecimiento = float(crecimiento_raw.replace('🚀 ', '').replace('%', '').strip()) if '%' in crecimiento_raw else 0
-        else:
-            crecimiento = float(crecimiento_raw) if pd.notna(crecimiento_raw) else 0
-            
         veredictos = []
         if potencial > 100:
             veredictos.append("🚀 Potencial explosivo")
@@ -251,25 +229,20 @@ def generar_veredicto(fila):
             veredictos.append("📊 Potencial moderado")
         else:
             veredictos.append("⚠️ Potencial limitado")
-            
         if rb_valor > 3:
             veredictos.append("excelente R:B")
         elif rb_valor > 1.5:
             veredictos.append("buen R:B")
         else:
             veredictos.append("R:B ajustado")
-            
         return " | ".join(veredictos)
     except Exception as e:
-        return f"⚠️ Error análisis: {str(e)[:30]}"
+        return f"⚠️ Error: {str(e)[:30]}"
 
 def analizar_cartera_global(df):
-    """Genera recomendaciones de análisis global."""
     if df.empty:
         return []
     recomendaciones = []
-    
-    # Potencial medio
     potenciales = []
     for _, fila in df.iterrows():
         try:
@@ -282,15 +255,12 @@ def analizar_cartera_global(df):
         except:
             pass
     potencial_medio = sum(potenciales) / len(potenciales) if potenciales else 0
-    
     if potencial_medio > 80:
-        recomendaciones.append(f"✅ **Potencial medio del {potencial_medio:.0f}%**: Cartera muy agresiva y orientada a crecimiento.")
+        recomendaciones.append(f"✅ **Potencial medio del {potencial_medio:.0f}%**: Cartera muy agresiva.")
     elif potencial_medio > 40:
-        recomendaciones.append(f"⚖️ **Potencial medio del {potencial_medio:.0f}%**: Balance entre crecimiento y seguridad.")
+        recomendaciones.append(f"⚖️ **Potencial medio del {potencial_medio:.0f}%**: Balance crecimiento/seguridad.")
     else:
-        recomendaciones.append(f"🛡️ **Potencial medio del {potencial_medio:.0f}%**: Cartera conservadora. Considera añadir más tech/robótica.")
-    
-    # Candados próximos a liberar
+        recomendaciones.append(f"🛡️ **Potencial medio del {potencial_medio:.0f}%**: Cartera conservadora.")
     candados_proximos = []
     for _, fila in df.iterrows():
         candado = str(fila.get('Candado', ''))
@@ -298,9 +268,7 @@ def analizar_cartera_global(df):
         if 0 < dias <= 14:
             candados_proximos.append(f"{fila['Ticker']} ({dias}d)")
     if candados_proximos:
-        recomendaciones.append(f"🔓 **Candados próximos a liberar:** {', '.join(candados_proximos)}")
-    
-    # Sectores
+        recomendaciones.append(f"🔓 **Candados próximos:** {', '.join(candados_proximos)}")
     sectores = set()
     for tick in df['Ticker'].tolist():
         try:
@@ -310,19 +278,17 @@ def analizar_cartera_global(df):
         except:
             pass
     if len(sectores) >= 3:
-        recomendaciones.append(f"🔄 **Diversificación en {len(sectores)} sectores:** Buena cobertura.")
+        recomendaciones.append(f"🔄 **Diversificación en {len(sectores)} sectores.**")
     else:
-        recomendaciones.append(f"🎯 **Concentrado en pocos sectores:** Alta correlación entre activos.")
-    
+        recomendaciones.append(f"🎯 **Concentrado en pocos sectores:** Alta correlación.")
     recomendaciones.append("---")
     recomendaciones.append("**💡 Próximos pasos:**")
     recomendaciones.append("• Mantén el candado de 90 días. No tomes decisiones impulsivas.")
     recomendaciones.append("• Revisa esta cartera una vez por semana, no diariamente.")
-    
     return recomendaciones
 
 # ============================================================================
-# INICIALIZACION DE SESSION STATE
+# INICIALIZACION DE SESSION STATE - ROBUSTA
 # ============================================================================
 
 if "listas_guardadas" not in st.session_state:
@@ -331,16 +297,22 @@ if "listas_guardadas" not in st.session_state:
 if "cartera_compras" not in st.session_state:
     st.session_state.cartera_compras = pd.DataFrame()
 
+PARAMS_DEFAULT = {
+    "capital_total": 30000,
+    "max_por_accion": 1000,
+    "tope_semanal": 5000,
+    "max_compras_semanal": 5,
+    "max_activos_cartera": 10,
+    "dias_candado": 90,
+    "umbral_sustitucion": 1.5
+}
+
 if "params_bot" not in st.session_state:
-    st.session_state.params_bot = {
-        "capital_total": 30000,
-        "max_por_accion": 1000,
-        "tope_semanal": 5000,
-        "max_compras_semanal": 5,
-        "max_activos_cartera": 10,
-        "dias_candado": 90,
-        "umbral_sustitucion": 1.5
-    }
+    st.session_state.params_bot = PARAMS_DEFAULT.copy()
+else:
+    for key, val in PARAMS_DEFAULT.items():
+        if key not in st.session_state.params_bot:
+            st.session_state.params_bot[key] = val
 
 if "registro_semanal" not in st.session_state:
     st.session_state.registro_semanal = {}
@@ -368,9 +340,9 @@ def puede_comprar_esta_semana(cantidad=1, costo=1000):
     tope = st.session_state.params_bot["tope_semanal"]
     max_compras = st.session_state.params_bot["max_compras_semanal"]
     if datos["gastado"] + costo > tope:
-        return False, f"Tope semanal alcanzado: {datos['gastado']:.0f}/{tope}"
+        return False, f"Tope semanal: {datos['gastado']:.0f}/{tope}"
     if datos["compras_realizadas"] + cantidad > max_compras:
-        return False, f"Máximo {max_compras} compras semanales alcanzado: {datos['compras_realizadas']}/{max_compras}"
+        return False, f"Máx {max_compras} compras: {datos['compras_realizadas']}/{max_compras}"
     return True, "OK"
 
 def registrar_compra(ticker, costo=1000):
@@ -393,13 +365,13 @@ pestaña1, pestaña2, pestaña3 = st.tabs([
 # ============================================================================
 with pestaña1:
     st.subheader("🤖 Algoritmo de Selección Inteligente - Horizonte 4 Años")
-    
+
     mercado_activo = comprobar_mercado_abierto()
     if mercado_activo:
         st.success("🟢 MERCADO ABIERTO")
     else:
         st.info("🕒 MERCADO CERRADO: Análisis con últimos datos disponibles.")
-    
+
     st.write("#### 🛡️ Reglas de Gestión Monetaria")
     col_r1, col_r2, col_r3, col_r4 = st.columns(4)
     with col_r1:
@@ -426,14 +398,13 @@ with pestaña1:
             value=st.session_state.params_bot["max_compras_semanal"], step=1, key="input_max_comp"
         )
         st.session_state.params_bot["max_compras_semanal"] = max_compras_sem
-    
-    # Selector de lista para el bot
+
     lista_bot = st.selectbox(
         "Universo a analizar:",
         list(st.session_state.listas_guardadas.keys()),
         key="select_lista_bot"
     )
-    
+
     col_btn1, col_btn2, col_btn3, col_btn4, col_btn5 = st.columns([2, 1, 1, 1, 1])
     with col_btn1:
         ejecutar_bot = st.button("🔄 Ejecutar Bot")
@@ -442,7 +413,7 @@ with pestaña1:
             st.session_state.cartera_compras = pd.DataFrame()
             st.session_state.registro_semanal = {}
             st.cache_data.clear()
-            st.success("¡Cartera y registro semanal completamente reseteados!")
+            st.success("¡Cartera y registro reseteados!")
             time.sleep(1)
             st.rerun()
     with col_btn3:
@@ -458,10 +429,8 @@ with pestaña1:
         if not st.session_state.cartera_compras.empty:
             csv_cartera = st.session_state.cartera_compras.to_csv(index=False)
             st.download_button(
-                label="📥 Exportar",
-                data=csv_cartera,
-                file_name="cartera_guardada.csv",
-                mime="text/csv",
+                label="📥 Exportar", data=csv_cartera,
+                file_name="cartera_guardada.csv", mime="text/csv",
                 key="export_cartera"
             )
         else:
@@ -476,88 +445,82 @@ with pestaña1:
                     st.success(f"✅ Cartera importada: {len(df_import)} posiciones")
                     st.rerun()
             except Exception as e:
-                st.error(f"❌ Error importando: {e}")
-    
-    # ============================================================================
-    # EJECUCION DEL BOT
-    # ============================================================================
+                st.error(f"❌ Error: {e}")
+
     if ejecutar_bot:
         st.cache_data.clear()
         st.toast("Analizando universo...")
         progress_bar = st.progress(0)
         status_text = st.empty()
-        
+
         lista_tickers = st.session_state.listas_guardadas[lista_bot]
-        
+
         if not lista_tickers:
             st.error("Lista vacía.")
         else:
-            # 1. DESCARGA BATCH (como la antigua - 1 solo call)
             status_text.text("📥 Descargando datos históricos...")
             datos_globales = descargar_datos_seguro(lista_tickers, period="1y", actions=True)
             progress_bar.progress(20)
-            
+
             status_text.text("📥 Descargando datos recientes...")
             datos_minuto = descargar_datos_seguro(lista_tickers, period="1d", interval="1m")
             progress_bar.progress(40)
-            
-            # 2. ANALIZA UNIVERSO COMPLETO
+
             candidatas_finalistas = []
             total_tickers = len(lista_tickers)
-            
+
             for idx, tick in enumerate(lista_tickers):
                 progress = 40 + int((idx / total_tickers) * 40)
                 progress_bar.progress(min(progress, 80))
                 status_text.text(f"🔍 {tick}... ({idx+1}/{total_tickers})")
-                
+
                 try:
                     historial = extraer_historial(datos_globales, tick)
                     if historial.empty or len(historial) < 200:
                         continue
-                    
+
                     precio_actual = extraer_precio_actual(datos_minuto, tick, historial)
                     if precio_actual is None or precio_actual <= 0:
                         continue
-                    
+
                     media_30 = historial['Close'].iloc[-30:].mean()
                     media_200 = historial['Close'].iloc[-200:].mean()
                     p_minimo_50 = historial['Close'].iloc[-50:].min()
                     volumen_actual = historial['Volume'].iloc[-1]
                     media_volumen_20 = historial['Volume'].iloc[-21:-1].mean()
-                    
-                    # FILTROS ESTRICTOS (como la antigua)
+
+                    # FILTROS ESTRICTOS (como antigua)
                     if precio_actual <= media_200:
                         continue
                     if precio_actual < (media_30 * 0.98):
                         continue
-                    
+
                     precio_hace_60d = historial['Close'].iloc[-60]
                     crecimiento_precio = ((precio_actual - precio_hace_60d) / precio_hace_60d) * 100
                     crecimiento_porcentaje = max(22.5, round(crecimiento_precio, 1))
-                    
+
                     if crecimiento_porcentaje < 20.0:
                         continue
-                    
-                    # 1 SOLO CALL A INFO (como la antigua)
+
                     target_estimado, div_yield, moneda_detectada, pct_inst, market_cap, sector = obtener_info_segura(tick)
-                    
+
                     if div_yield is None or div_yield == 0:
                         div_yield = calcular_dividend_yield(historial, precio_actual, tick)
-                    
+
                     if target_estimado is None or target_estimado == 0:
                         potencial_4a = crecimiento_porcentaje * 1.18
                     else:
                         potencial_4a = ((target_estimado - precio_actual) / precio_actual) * 100
-                    
+
                     riesgo_suelo = ((precio_actual - p_minimo_50) / precio_actual) * 100
                     if riesgo_suelo <= 0:
                         riesgo_suelo = 0.5
                     ratio_rb_calc = potencial_4a / riesgo_suelo
-                    
+
                     fuerza_volumen = "🔥 ALTO" if volumen_actual > (media_volumen_20 * 1.15) else "🟢 NORMAL"
-                    
+
                     sym = simbolo_moneda(moneda_detectada)
-                    
+
                     candidatas_finalistas.append({
                         "Ticker": tick,
                         "Precio Actual": precio_actual,
@@ -574,60 +537,50 @@ with pestaña1:
                     })
                 except:
                     continue
-            
+
             progress_bar.progress(85)
-            status_text.text("💼 Evaluando cartera y ejecutando compras...")
-            
-            # 3. ORDENA POR POTENCIAL
+            status_text.text("💼 Evaluando cartera y ejecutando...")
+
             if candidatas_finalistas:
                 df_candidatas = pd.DataFrame(candidatas_finalistas).sort_values(by="Potencial 4A", ascending=False)
-                
-                # 4. CHEQUEAR LÍMITES SEMANALES
+
                 puede_comprar, msg = puede_comprar_esta_semana()
                 if not puede_comprar:
                     st.warning(f"🛑 {msg}")
                 else:
-                    # 5. EVALUAR CARTERA ACTUAL
                     cartera_actual = st.session_state.cartera_compras
                     tickers_en_cartera = set(cartera_actual["Ticker"].tolist()) if not cartera_actual.empty else set()
                     activos_actuales = len(cartera_actual) if not cartera_actual.empty else 0
                     cupo_libre = max_activos - activos_actuales
-                    
-                    # Calcular caja libre real
+
                     capital_total = st.session_state.params_bot["capital_total"]
                     invertido_total = cartera_actual["Capital Invertido Base"].sum() if not cartera_actual.empty else 0
                     caja_libre = capital_total - invertido_total
-                    
+
                     posiciones_nuevas = []
                     posiciones_sustituidas = []
-                    gastado_semana = 0
-                    
+
                     for _, fila in df_candidatas.iterrows():
-                        # Chequear tope semanal
                         puede, msg = puede_comprar_esta_semana(cantidad=1, costo=max_por_accion)
                         if not puede:
                             break
-                        
-                        # Chequear caja
+
                         if caja_libre < max_por_accion:
-                            st.info(f"🛑 Caja insuficiente: {caja_libre:.2f} < {max_por_accion}")
+                            st.info(f"🛑 Caja insuficiente: {caja_libre:.2f}")
                             break
-                        
-                        # Saltar si ya en cartera
+
                         if fila["Ticker"] in tickers_en_cartera:
                             continue
-                        
-                        # 6A. COMPRA NUEVA (cupo libre)
+
                         if cupo_libre > 0:
                             caja_libre -= max_por_accion
-                            gastado_semana += max_por_accion
                             cupo_libre -= 1
-                            
+
                             fecha_compra = datetime.now().strftime('%d/%m/%Y')
                             fecha_liberacion = (datetime.now() + timedelta(days=st.session_state.params_bot["dias_candado"])).strftime('%d/%m/%Y')
                             precio = fila["Precio Actual"]
                             cantidad = round(max_por_accion / precio, 4)
-                            
+
                             posiciones_nuevas.append({
                                 "Ticker": fila["Ticker"],
                                 "Acciones": cantidad,
@@ -648,14 +601,12 @@ with pestaña1:
                                 "Moneda": fila["Moneda"]
                             })
                             registrar_compra(fila["Ticker"], max_por_accion)
-                            
-                        # 6B. SUSTITUCIÓN (cupo lleno, candado liberado)
+
                         else:
-                            # Buscar peor R:B en cartera con candado liberado
                             hoy = datetime.now()
                             peor_rb = 999.0
                             peor_idx = None
-                            
+
                             for idx_c, row_c in cartera_actual.iterrows():
                                 if esta_candado_liberado(str(row_c.get('Candado', ''))):
                                     rb_str = str(row_c.get('Ratio R:B', '1 : 1.0'))
@@ -667,30 +618,26 @@ with pestaña1:
                                                 peor_idx = idx_c
                                     except:
                                         pass
-                            
+
                             if peor_idx is not None:
-                                # Comparar con umbral de sustitución
                                 rb_candidato = fila["Ratio R:B"]
                                 umbral = st.session_state.params_bot["umbral_sustitucion"]
-                                
+
                                 if rb_candidato > peor_rb * umbral:
                                     ticker_vendido = cartera_actual.loc[peor_idx, 'Ticker']
                                     capital_liberado = cartera_actual.loc[peor_idx, 'Capital Invertido Base']
-                                    
-                                    # Eliminar de cartera
+
                                     cartera_actual = cartera_actual.drop(peor_idx).reset_index(drop=True)
                                     st.session_state.cartera_compras = cartera_actual
                                     tickers_en_cartera = set(cartera_actual["Ticker"].tolist()) if not cartera_actual.empty else set()
-                                    
-                                    # Añadir nuevo
+
                                     caja_libre += capital_liberado - max_por_accion
-                                    gastado_semana += max_por_accion
-                                    
+
                                     fecha_compra = datetime.now().strftime('%d/%m/%Y')
                                     fecha_liberacion = (datetime.now() + timedelta(days=st.session_state.params_bot["dias_candado"])).strftime('%d/%m/%Y')
                                     precio = fila["Precio Actual"]
                                     cantidad = round(max_por_accion / precio, 4)
-                                    
+
                                     posiciones_nuevas.append({
                                         "Ticker": fila["Ticker"],
                                         "Acciones": cantidad,
@@ -713,12 +660,11 @@ with pestaña1:
                                     posiciones_sustituidas.append((ticker_vendido, fila["Ticker"]))
                                     registrar_compra(fila["Ticker"], max_por_accion)
                                 else:
-                                    break  # No hay candidatos lo suficientemente mejores
+                                    break
                             else:
-                                st.info("🔒 Cartera llena y ningún candado liberado. Espera a la próxima semana.")
+                                st.info("🔒 Cartera llena, ningún candado liberado.")
                                 break
-                    
-                    # Añadir posiciones nuevas a cartera
+
                     if posiciones_nuevas:
                         df_nuevas = pd.DataFrame(posiciones_nuevas)
                         if st.session_state.cartera_compras.empty:
@@ -728,40 +674,37 @@ with pestaña1:
                                 [st.session_state.cartera_compras, df_nuevas], 
                                 ignore_index=True
                             )
-                        
+
                         if posiciones_sustituidas:
                             for viejo, nuevo in posiciones_sustituidas:
                                 st.success(f"🔄 Sustituido {viejo} → {nuevo}")
-                        st.success(f"✅ {len(posiciones_nuevas)} posiciones añadidas. Semana: {get_registro_semana_actual()['compras_realizadas']}/{max_compras_sem} compras.")
+                        st.success(f"✅ {len(posiciones_nuevas)} posiciones. Semana: {get_registro_semana_actual()['compras_realizadas']}/{max_compras_sem}")
                     else:
                         st.info("Sin nuevas posiciones esta semana.")
             else:
-                st.info("Ningún activo cumplió los filtros estrictos.")
-            
+                st.info("Ningún activo cumplió filtros estrictos.")
+
             progress_bar.progress(100)
             time.sleep(0.5)
             progress_bar.empty()
             status_text.empty()
-    
-    # ============================================================================
-    # MOSTRAR CARTERA CON P&L
-    # ============================================================================
+
+    # MOSTRAR CARTERA
     df_mostrar = st.session_state.cartera_compras.copy()
     capital_total = st.session_state.params_bot["capital_total"]
     caja_libre = capital_total
     gastado_semana = 0.0
     alerta_cupo = False
-    
+
     if not df_mostrar.empty:
         invertido_total = df_mostrar["Capital Invertido Base"].sum()
         caja_libre = capital_total - invertido_total
         gastado_semana = get_registro_semana_actual()["gastado"]
         alerta_cupo = len(df_mostrar) >= max_activos
-        
-        # 7. ACTUALIZAR P&L EN BATCH (como la antigua)
+
         lista_activos = df_mostrar["Ticker"].tolist()
         precios_vivos = {}
-        
+
         with st.spinner("🔄 Actualizando precios..."):
             try:
                 cotizaciones_batch = yf.download(" ".join(lista_activos), period="5d", interval="1d", group_by="ticker", progress=False)
@@ -773,7 +716,7 @@ with pestaña1:
                             precios_vivos[tick] = float(cotizaciones_batch[tick]['Close'].iloc[-1])
             except:
                 pass
-        
+
         lista_pnl = []
         for _, fila in df_mostrar.iterrows():
             t = fila["Ticker"]
@@ -784,22 +727,20 @@ with pestaña1:
             ganancia_valor = (p_live - p_entrada) * n
             ganancia_pct = ((p_live - p_entrada) / p_entrada) * 100 if p_entrada > 0 else 0
             lista_pnl.append(formatear_pnl(ganancia_valor, ganancia_pct, moneda))
-        
+
         df_mostrar["Rendimiento Actual (P&L)"] = lista_pnl
-        
-        # Veredicto
+
         try:
             df_mostrar["📝 Veredicto"] = df_mostrar.apply(generar_veredicto, axis=1)
         except:
             df_mostrar["📝 Veredicto"] = "⚠️ Pendiente"
-        
-        # Estado del candado
+
         df_mostrar["Estado Candado"] = df_mostrar["Candado"].apply(
             lambda x: "🔓 LIBERADO" if esta_candado_liberado(x) else x
         )
-    
+
     total_invertido = capital_total - caja_libre
-    
+
     st.write("---")
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Capital Total", f"{capital_total:,.0f}")
@@ -807,10 +748,10 @@ with pestaña1:
     c3.metric("Caja Libre", f"{caja_libre:,.2f}")
     c4.metric("Semanal", f"{gastado_semana:,.0f}/{tope_semanal:,.0f}")
     c5.metric("Compras Sem", f"{get_registro_semana_actual()['compras_realizadas']}/{max_compras_sem}")
-    
+
     if alerta_cupo:
-        st.warning(f"⚠️ Cupo máximo de {max_activos} acciones alcanzado.")
-    
+        st.warning(f"⚠️ Cupo máximo {max_activos} alcanzado.")
+
     st.write("---")
     st.write("### 📊 Cartera a 4 Años")
     if not df_mostrar.empty:
@@ -821,9 +762,8 @@ with pestaña1:
         cols_existentes = [c for c in cols if c in df_mostrar.columns]
         st.dataframe(df_mostrar[cols_existentes], use_container_width=True)
     else:
-        st.info("Cartera vacía. Ejecuta el bot para empezar.")
-    
-    # Análisis global
+        st.info("Cartera vacía. Ejecuta el bot.")
+
     if not df_mostrar.empty:
         st.write("---")
         st.write("### 🧠 Análisis de tu Cartera")
@@ -831,23 +771,22 @@ with pestaña1:
             for rec in analizar_cartera_global(df_mostrar):
                 st.write(rec)
         except Exception as e:
-            st.error(f"⚠️ Error análisis: {e}")
-        
-        st.info("📅 **Recordatorio:** Revisa una vez por semana. No tomes decisiones impulsivas antes del candado de 90 días.")
+            st.error(f"⚠️ Error: {e}")
+        st.info("📅 Revisa una vez por semana. No tomes decisiones impulsivas.")
 
 # ============================================================================
-# PESTANA 2: ANALIZADOR TECNICO
+# PESTANA 2: ANALIZADOR TECNICO - CRITERIOS ANTIGUOS RESTAURADOS
 # ============================================================================
 with pestaña2:
     st.subheader("🔍 Analizador de Oportunidades - Horizonte 4 Años")
-    
+
     st.write("### 📈 Análisis Individual")
     col_input, col_btn = st.columns([3, 1])
     with col_input:
         ticker_individual = st.text_input("Ticker:", value="", placeholder="Ej: NVDA, AMD, ARM...", key="ticker_individual")
     with col_btn:
         analizar_individual = st.button("🔍 Analizar", key="btn_analizar_individual")
-    
+
     if analizar_individual and ticker_individual.strip():
         tick = ticker_individual.strip().upper()
         with st.spinner(f"Analizando {tick}..."):
@@ -860,28 +799,28 @@ with pestaña2:
                     media_50 = h['Close'].iloc[-50:].mean()
                     media_200 = h['Close'].iloc[-200:].mean()
                     p_minimo_50 = h['Close'].iloc[-50:].min()
-                    
+
                     target_val, div_yield, moneda, pct_inst, market_cap, sector = obtener_info_segura(tick)
-                    
+
                     if div_yield is None or div_yield == 0:
                         div_yield = calcular_dividend_yield(h, p_actual, tick)
-                    
+
                     precio_60d = h['Close'].iloc[-60] if len(h) >= 60 else h['Close'].iloc[0]
                     crec_pct = ((p_actual - precio_60d) / precio_60d) * 100
-                    
+
                     if target_val is None or target_val == 0:
                         potencial_val = max(20.0, crec_pct * 1.12)
                         target_val = p_actual * (1 + potencial_val/100)
                     else:
                         potencial_val = ((target_val - p_actual) / p_actual) * 100
-                    
+
                     riesgo = ((p_actual - p_minimo_50) / p_actual) * 100
                     if riesgo <= 0:
                         riesgo = 0.5
                     ratio_rb = potencial_val / riesgo
-                    
+
                     sym = simbolo_moneda(moneda)
-                    
+
                     st.write("#### 📊 Evolución del Precio")
                     h['MA50'] = h['Close'].rolling(window=50).mean()
                     h['MA200'] = h['Close'].rolling(window=200).mean()
@@ -891,25 +830,25 @@ with pestaña2:
                         'Media 200d': h['MA200']
                     })
                     st.line_chart(chart_data, use_container_width=True)
-                    
+
                     st.write("#### 📋 Métricas Clave")
                     c1, c2, c3, c4 = st.columns(4)
                     c1.metric("Precio Actual", f"{p_actual:.2f} {sym}")
                     c2.metric("Target", f"{target_val:.2f} {sym}")
                     c3.metric("Potencial", f"{potencial_val:.1f}%")
                     c4.metric("Ratio R:B", f"1:{ratio_rb:.1f}")
-                    
+
                     c5, c6, c7, c8 = st.columns(4)
                     c5.metric("Media 50d", f"{media_50:.2f} {sym}")
                     c6.metric("Media 200d", f"{media_200:.2f} {sym}")
                     c7.metric("Dividendo", formatear_dividendo(div_yield))
                     c8.metric("Market Cap", formatear_market_cap(market_cap))
-                    
-                    # Semáforo
+
+                    # SEMÁFORO - CRITERIOS ANTIGUOS EXACTOS
                     puntos = 0
                     razones_verde = []
                     razones_rojo = []
-                    
+
                     if p_actual > media_200:
                         puntos += 1; razones_verde.append("✅ > MA200")
                     else:
@@ -928,7 +867,7 @@ with pestaña2:
                         puntos += 0.5; razones_verde.append("⚠️ R:B >1")
                     else:
                         razones_rojo.append("❌ R:B <1")
-                    
+
                     col_sem = st.columns([1, 2, 1])[1]
                     with col_sem:
                         if puntos >= 4 and potencial_val > 50:
@@ -938,7 +877,7 @@ with pestaña2:
                         else:
                             st.error("## 🔴 NO COMPRAR / ESPERAR")
                         st.write(f"**Puntuación: {puntos:.1f}/4**")
-                    
+
                     with st.expander("📋 Detalle de evaluación"):
                         st.write("**A favor:**")
                         for r in razones_verde:
@@ -948,41 +887,41 @@ with pestaña2:
                             st.write(r)
             except Exception as e:
                 st.error(f"Error: {e}")
-    
+
     st.write("---")
     st.write("### 📋 Análisis de Listas Pregrabadas")
     lista_sel = st.selectbox("Universo:", ["Ninguna"] + list(st.session_state.listas_guardadas.keys()), key="select_lista")
-    
+
     if lista_sel != "Ninguna":
         tickers_lista = st.session_state.listas_guardadas[lista_sel]
         if tickers_lista:
             with st.spinner("Analizando..."):
                 datos_globales_p2 = descargar_datos_seguro(tickers_lista, period="1y", actions=True)
                 datos_lista = []
-                
+
                 barra = st.progress(0)
                 tickers_unicos = list(dict.fromkeys(tickers_lista))
                 total = len(tickers_unicos)
-                
+
                 for idx, tick in enumerate(tickers_unicos):
                     barra.progress(int((idx / total) * 100))
                     try:
                         h = extraer_historial(datos_globales_p2, tick)
                         if h.empty or len(h) < 50:
                             continue
-                        
+
                         p_actual = h['Close'].iloc[-1]
                         p_media = h['Close'].iloc[-50:].mean()
                         p_minimo = h['Close'].iloc[-50:].min()
-                        
+
                         target_val, div_yield, moneda, pct_inst, market_cap, sector = obtener_info_segura(tick)
-                        
+
                         if div_yield is None or div_yield == 0:
                             div_yield = calcular_dividend_yield(h, p_actual, tick)
-                        
+
                         precio_60d = h['Close'].iloc[-60] if len(h) >= 60 else h['Close'].iloc[0]
                         crec_pct = ((p_actual - precio_60d) / precio_60d) * 100
-                        
+
                         if target_val is None or target_val == 0:
                             potencial_val = max(20.0, crec_pct * 1.12)
                             target_val = p_actual * (1 + potencial_val/100)
@@ -993,21 +932,25 @@ with pestaña2:
                                 target_val = p_actual * (1 + potencial_val/100)
                             else:
                                 potencial_val = potencial_raw
-                        
+
                         riesgo = ((p_actual - p_minimo) / p_actual) * 100
                         if riesgo <= 0:
                             riesgo = 0.5
                         ratio_rb = potencial_val / riesgo
-                        
+
                         sym = simbolo_moneda(moneda)
-                        
+
+                        # SEMÁFORO - CRITERIOS ANTIGUOS EXACTOS
                         if p_actual > p_media and potencial_val >= 20.0:
                             semaforo = "🟢 COMPRAR"
+                            explicacion = "Estructura alcista y excelente margen de subida real."
                         elif potencial_val >= 10.0:
                             semaforo = "🟡 ACUMULAR"
+                            explicacion = "Consolidando niveles. Atractivo para medio plazo."
                         else:
                             semaforo = "🔴 ESPERAR"
-                        
+                            explicacion = "Precio objetivo ajustado o sin margen de seguridad dinámico."
+
                         datos_lista.append({
                             "Ticker": tick,
                             "Precio": f"{p_actual:.2f} {sym}",
@@ -1015,13 +958,14 @@ with pestaña2:
                             "Potencial": f"{potencial_val:.1f}%",
                             "R:B": f"1:{ratio_rb:.1f}",
                             "Dividendo": formatear_dividendo(div_yield),
-                            "🚦": semaforo
+                            "🚦": semaforo,
+                            "Nota": explicacion
                         })
                     except:
                         pass
-                
+
                 barra.empty()
-                
+
                 if datos_lista:
                     df_lista = pd.DataFrame(datos_lista)
                     st.write(f"**{len(df_lista)} activos analizados**")
@@ -1036,13 +980,13 @@ with pestaña2:
 # ============================================================================
 with pestaña3:
     st.subheader("⚙️ Gestión de Listas de Seguimiento")
-    
+
     for nombre_lista, tickers_lista in list(st.session_state.listas_guardadas.items()):
         with st.expander(f"📋 {nombre_lista} ({len(tickers_lista)} tickers)"):
             st.write(f"**Tickers:** {', '.join(tickers_lista)}")
-            
+
             st.write("**✏️ Editar tickers:**")
-            
+
             col_del_sel, col_del_btn = st.columns([3, 1])
             with col_del_sel:
                 ticker_a_eliminar = st.selectbox(
@@ -1054,7 +998,7 @@ with pestaña3:
                         st.session_state.listas_guardadas[nombre_lista].remove(ticker_a_eliminar)
                         st.success(f"🗑️ Eliminado {ticker_a_eliminar}")
                         st.rerun()
-            
+
             col_add, col_add_btn = st.columns([3, 1])
             with col_add:
                 nuevo_ticker = st.text_input(f"Añadir:", key=f"add_ticker_{nombre_lista}")
@@ -1066,7 +1010,7 @@ with pestaña3:
                         st.rerun()
                     else:
                         st.error("Vacío o duplicado")
-            
+
             st.write("---")
             col_edit, col_del = st.columns([1, 1])
             with col_edit:
@@ -1080,12 +1024,12 @@ with pestaña3:
                     del st.session_state.listas_guardadas[nombre_lista]
                     st.success(f"Lista '{nombre_lista}' eliminada.")
                     st.rerun()
-    
+
     st.write("---")
     st.write("### ➕ Crear Nueva Lista")
     nombre_nueva = st.text_input("Nombre:", key="nueva_lista_nombre")
     tickers_nueva = st.text_area("Tickers (separados por comas):", key="nueva_lista_tickers")
-    
+
     if st.button("💾 Guardar", key="guardar_nueva"):
         if nombre_nueva and tickers_nueva:
             tickers_limpios = [t.strip().upper() for t in tickers_nueva.replace("\n", ",").split(",") if t.strip()]
@@ -1094,7 +1038,7 @@ with pestaña3:
             st.rerun()
         else:
             st.error("Completa nombre y tickers.")
-    
+
     st.write("---")
     st.write("### 📥 Importar/Exportar Listas")
     col_imp, col_exp = st.columns(2)
