@@ -152,25 +152,76 @@ def calcular_rsi(historial, periodo=14):
     except:
         return 50
 
-def calcular_beta(historial):
+def calcular_beta(historial, beta_info=None):
+    """
+    Calcula Beta. Si beta_info viene de ticker.info, lo usa directamente.
+    Si no, calcula manualmente vs SPY.
+    """
+    # Si yfinance nos dio beta en info, usarlo directamente
+    if beta_info is not None and beta_info > 0 and beta_info < 10:
+        return round(beta_info, 2)
+
+    # Calcular manualmente vs SPY
     try:
-        ticker_spy = yf.Ticker("SPY")
-        spy_hist = ticker_spy.history(period="6mo")
-        if spy_hist.empty or len(spy_hist) < 50:
+        # Descargar SPY solo una vez y cachearlo
+        spy_hist = yf.Ticker("SPY").history(period="1y")
+        if spy_hist.empty or len(spy_hist) < 30:
+            # Fallback: estimar beta desde volatilidad relativa
+            return estimar_beta_desde_volatilidad(historial)
+
+        # Usar solo los últimos 90 días para calcular beta reciente
+        stock_recent = historial['Close'].iloc[-90:]
+        spy_recent = spy_hist['Close'].iloc[-90:]
+
+        # Alinear índices
+        common_idx = stock_recent.index.intersection(spy_recent.index)
+        if len(common_idx) < 20:
+            return estimar_beta_desde_volatilidad(historial)
+
+        s_prices = stock_recent.loc[common_idx]
+        spy_prices = spy_recent.loc[common_idx]
+
+        # Calcular retornos diarios
+        s_ret = s_prices.pct_change().dropna()
+        spy_ret = spy_prices.pct_change().dropna()
+
+        if len(s_ret) < 15 or len(spy_ret) < 15:
+            return estimar_beta_desde_volatilidad(historial)
+
+        # Beta = cov(stock, market) / var(market)
+        cov = np.cov(s_ret, spy_ret)[0, 1]
+        var_market = np.var(spy_ret)
+
+        if var_market == 0 or np.isnan(cov):
+            return estimar_beta_desde_volatilidad(historial)
+
+        beta = cov / var_market
+
+        # Validar que el beta es razonable
+        if abs(beta) > 5 or np.isnan(beta):
+            return estimar_beta_desde_volatilidad(historial)
+
+        return round(float(beta), 2)
+
+    except Exception as e:
+        return estimar_beta_desde_volatilidad(historial)
+
+def estimar_beta_desde_volatilidad(historial):
+    """
+    Estima beta aproximado desde la volatilidad del stock.
+    Un stock con volatilidad >2x del mercado ~ beta >2.
+    """
+    try:
+        retornos = historial['Close'].pct_change().dropna().iloc[-90:]
+        if len(retornos) < 20:
             return None
-        common_dates = historial.index.intersection(spy_hist.index)
-        if len(common_dates) < 30:
-            return None
-        stock_returns = historial.loc[common_dates, 'Close'].pct_change().dropna()
-        spy_returns = spy_hist.loc[common_dates, 'Close'].pct_change().dropna()
-        if len(stock_returns) < 30 or len(spy_returns) < 30:
-            return None
-        covariance = stock_returns.cov(spy_returns)
-        spy_variance = spy_returns.var()
-        if spy_variance == 0:
-            return None
-        beta = covariance / spy_variance
-        return round(beta, 2)
+        volatilidad_stock = retornos.std() * np.sqrt(252)  # Anualizada
+        # Volatilidad típica del mercado ~ 16%
+        volatilidad_mercado = 0.16
+        beta_estimado = volatilidad_stock / volatilidad_mercado
+        if beta_estimado > 5:
+            beta_estimado = 5.0
+        return round(float(beta_estimado), 2)
     except:
         return None
 
@@ -188,14 +239,19 @@ def obtener_info_segura(ticker):
         pct_inst = info.get('heldPercentInstitutions', None)
         market_cap = info.get('marketCap', None)
         sector = info.get('sector', None)
+        beta_info = info.get('beta', None)
+        if beta_info is None:
+            beta_info = info.get('beta3Year', None)
+        if beta_info is None:
+            beta_info = info.get('beta5Year', None)
         if dy is not None:
             if dy > 1.0:
                 dy = dy / 100.0
             if dy > 0.10:
                 dy = 0.0
-        return target, dy, moneda, pct_inst, market_cap, sector
+        return target, dy, moneda, pct_inst, market_cap, sector, beta_info
     except:
-        return None, None, detectar_moneda(ticker), None, None, None
+        return None, None, detectar_moneda(ticker), None, None, None, None
 
 def descargar_datos_seguro(tickers, period="1y", interval=None, actions=False):
     if isinstance(tickers, list):
@@ -380,7 +436,7 @@ def analizar_cartera_global(df):
     sectores = set()
     for tick in df['Ticker'].tolist():
         try:
-            _, _, _, _, _, sector = obtener_info_segura(tick)
+            _, _, _, _, _, sector, _ = obtener_info_segura(tick)
             if sector:
                 sectores.add(sector)
         except:
@@ -482,13 +538,20 @@ def calcular_score_unificado(precio_actual, media_30, media_200, crecimiento_por
         score += 1
         motivos.append("Momentum positivo")
 
-    # Crecimiento reciente (3 puntos)
-    if crecimiento_porcentaje >= 20.0:
+    # Crecimiento reciente (3 puntos) - CONDICIONADO al potencial futuro
+    if crecimiento_porcentaje >= 20.0 and potencial_4a >= 20.0:
         score += 3
-        motivos.append("Crecimiento fuerte")
-    elif crecimiento_porcentaje >= 10.0:
+        motivos.append("Crecimiento fuerte + potencial confirmado")
+    elif crecimiento_porcentaje >= 20.0 and potencial_4a < 20.0:
+        # Crecimiento pasado alto pero potencial futuro bajo = desaceleración
+        score += 1
+        motivos.append("Crecimiento pasado alto pero potencial futuro débil")
+    elif crecimiento_porcentaje >= 10.0 and potencial_4a >= 15.0:
         score += 1
         motivos.append("Crecimiento moderado")
+    elif crecimiento_porcentaje >= 10.0:
+        score += 0
+        motivos.append("Crecimiento moderado pero potencial insuficiente")
 
     # Potencial (2 puntos) - diferenciado según disponibilidad de target
     if tiene_target:
@@ -498,13 +561,15 @@ def calcular_score_unificado(precio_actual, media_30, media_200, crecimiento_por
         elif potencial_4a >= 20:
             score += 1
             motivos.append("Potencial moderado")
+        # Si potencial_4a < 20, no da puntos de potencial
     else:
         if potencial_4a >= 30:
             score += 2
             motivos.append("Momentum técnico fuerte")
-        elif potencial_4a >= 15:
+        elif potencial_4a >= 20:
             score += 1
             motivos.append("Momentum técnico moderado")
+        # Si potencial_4a < 20, no da puntos de potencial
 
     # R:B favorable (2 puntos)
     if ratio_rb_calc >= 2.0:
@@ -587,6 +652,9 @@ else:
 
 if "registro_semanal" not in st.session_state:
     st.session_state.registro_semanal = cargar_registro()
+
+if "propuesta_sustitucion" not in st.session_state:
+    st.session_state.propuesta_sustitucion = None
 
 semana_actual = datetime.now().strftime("%Y-W%U")
 if semana_actual not in st.session_state.registro_semanal:
@@ -794,7 +862,7 @@ with pestaña1:
                         continue
 
                     rsi_valor = calcular_rsi(historial)
-                    beta_valor = calcular_beta(historial)
+                    beta_valor = calcular_beta(historial, beta_info)
 
                     media_30 = historial['Close'].iloc[-30:].mean()
                     media_200 = historial['Close'].iloc[-200:].mean() if len(historial) >= 200 else media_30
@@ -806,7 +874,7 @@ with pestaña1:
                     crecimiento_precio = ((precio_actual - precio_hace_60d) / precio_hace_60d) * 100
                     crecimiento_porcentaje = max(0, round(crecimiento_precio, 1))
 
-                    target_estimado, div_yield, moneda_detectada, pct_inst, market_cap, sector = obtener_info_segura(tick)
+                    target_estimado, div_yield, moneda_detectada, pct_inst, market_cap, sector, beta_info = obtener_info_segura(tick)
 
                     if div_yield is None or div_yield == 0:
                         div_yield = calcular_dividend_yield(historial, precio_actual, tick)
@@ -964,7 +1032,7 @@ with pestaña1:
                         registrar_compra(fila["Ticker"], max_por_accion)
 
                     else:
-                        hoy = datetime.now()
+                        # BUSCAR MEJOR CANDIDATO A SUSTITUIR
                         peor_rb = 999.0
                         peor_idx = None
 
@@ -986,43 +1054,22 @@ with pestaña1:
 
                             if rb_candidato > peor_rb * umbral:
                                 ticker_vendido = cartera_actual.loc[peor_idx, 'Ticker']
-                                capital_liberado = cartera_actual.loc[peor_idx, 'Capital Invertido Base']
 
-                                cartera_actual = cartera_actual.drop(peor_idx).reset_index(drop=True)
-                                st.session_state.cartera_compras = cartera_actual
-                                tickers_en_cartera = set(cartera_actual["Ticker"].tolist()) if not cartera_actual.empty else set()
-
-                                caja_libre += capital_liberado - max_por_accion
-
-                                fecha_compra = datetime.now().strftime('%d/%m/%Y')
-                                fecha_liberacion = (datetime.now() + timedelta(days=st.session_state.params_bot["dias_candado"])).strftime('%d/%m/%Y')
-                                precio = fila["Precio Actual"]
-                                cantidad = round(max_por_accion / precio, 4)
-
-                                posiciones_nuevas.append({
-                                    "Ticker": fila["Ticker"],
-                                    "Acciones": cantidad,
-                                    "Precio Entrada Base": precio,
-                                    "Precio Entrada": f"{precio:.2f} {fila['Simbolo']}",
-                                    "Crecimiento Business": f"🚀 {fila['Crecimiento Anual']:.1f}%",
-                                    "Potencial 4Años": f"{fila['Potencial 4A']:.1f}%",
-                                    "Ratio R:B": f"1 : {fila['Ratio R:B']:.1f}",
-                                    "Dividendo": formatear_dividendo(fila["Dividendo"]),
-                                    "RSI": fila["RSI"],
-                                    "Beta": fila["Beta"],
-                                    "Alerta Volatilidad": fila["Alerta Volatilidad"],
-                                    "Volumen H.F.": fila["Volumen H.F."],
-                                    "Interés Inst.": "🎯 FUERTE" if fila["Pct Institucional"] and fila["Pct Institucional"] > 0.5 else "🎯 MODERADO" if fila["Pct Institucional"] else "🎯 DÉBIL",
-                                    "Pct Institucional": f"{fila['Pct Institucional']*100:.1f}%" if fila['Pct Institucional'] else "N/A",
-                                    "Market Cap": formatear_market_cap(fila["Market Cap"]),
-                                    "Capital Invertido Base": max_por_accion,
-                                    "Capital Invertido": f"{max_por_accion:.2f} {fila['Simbolo']}",
-                                    "Fecha Compra": fecha_compra,
-                                    "Candado": f"🔒 {fecha_liberacion}",
-                                    "Moneda": fila["Moneda"]
-                                })
-                                posiciones_sustituidas.append((ticker_vendido, fila["Ticker"]))
-                                registrar_compra(fila["Ticker"], max_por_accion)
+                                # GUARDAR PROPUESTA para autorización del usuario
+                                st.session_state.propuesta_sustitucion = {
+                                    "vender": ticker_vendido,
+                                    "comprar": fila["Ticker"],
+                                    "rb_viejo": peor_rb,
+                                    "rb_nuevo": rb_candidato,
+                                    "score_nuevo": fila["Score"],
+                                    "potencial_nuevo": fila["Potencial 4A"],
+                                    "precio_nuevo": fila["Precio Actual"],
+                                    "moneda_nuevo": fila["Simbolo"],
+                                    "fila_completa": fila.to_dict()
+                                }
+                                st.warning(f"📋 PROPUESTA DE SUSTITUCIÓN: Vender {ticker_vendido} → Comprar {fila['Ticker']}")
+                                st.info("Revisa la sección '🔀 Propuestas de Sustitución' abajo para autorizar.")
+                                break  # Salir del loop, esperar autorización
                             else:
                                 break
                         else:
@@ -1128,6 +1175,89 @@ with pestaña1:
     else:
         st.info("Cartera vacía. Ejecuta el bot.")
 
+    # ============================================================================
+    # PROPUESTAS DE SUSTITUCIÓN (HUMAN-IN-THE-LOOP)
+    # ============================================================================
+    if st.session_state.propuesta_sustitucion is not None:
+        st.write("---")
+        st.write("### 🔀 Propuesta de Sustitución Pendiente")
+
+        prop = st.session_state.propuesta_sustitucion
+
+        col_info1, col_info2 = st.columns(2)
+        with col_info1:
+            st.error(f"🗑️ VENDER: **{prop['vender']}**")
+            st.write(f"Ratio R:B actual: 1:{prop['rb_viejo']:.1f}")
+        with col_info2:
+            st.success(f"💰 COMPRAR: **{prop['comprar']}**")
+            st.write(f"Score: {prop['score_nuevo']}/11")
+            st.write(f"Potencial 4A: {prop['potencial_nuevo']:.1f}%")
+            st.write(f"Ratio R:B: 1:{prop['rb_nuevo']:.1f}")
+            st.write(f"Precio: {prop['precio_nuevo']:.2f} {prop['moneda_nuevo']}")
+
+        st.write("**Motivos de la propuesta:**")
+        st.write(f"• La nueva oportunidad tiene un R:B {prop['rb_nuevo']/prop['rb_viejo']:.1f}x mejor")
+        st.write(f"• El activo actual ({prop['vender']}) tiene el candado liberado")
+
+        col_ok, col_ko = st.columns(2)
+        with col_ok:
+            if st.button("✅ AUTORIZAR SUSTITUCIÓN", key="auth_sustitucion"):
+                # Ejecutar la sustitución
+                fila = pd.Series(prop['fila_completa'])
+
+                # Encontrar índice del activo a vender
+                cartera_actual = st.session_state.cartera_compras
+                idx_vender = cartera_actual[cartera_actual['Ticker'] == prop['vender']].index[0]
+                capital_liberado = cartera_actual.loc[idx_vender, 'Capital Invertido Base']
+
+                # Eliminar de cartera
+                cartera_actual = cartera_actual.drop(idx_vender).reset_index(drop=True)
+                st.session_state.cartera_compras = cartera_actual
+
+                # Añadir nuevo
+                fecha_compra = datetime.now().strftime('%d/%m/%Y')
+                fecha_liberacion = (datetime.now() + timedelta(days=st.session_state.params_bot["dias_candado"])).strftime('%d/%m/%Y')
+                precio = prop['precio_nuevo']
+                cantidad = round(max_por_accion / precio, 4)
+
+                nueva_posicion = {
+                    "Ticker": prop['comprar'],
+                    "Acciones": cantidad,
+                    "Precio Entrada Base": precio,
+                    "Precio Entrada": f"{precio:.2f} {prop['moneda_nuevo']}",
+                    "Crecimiento Business": f"🚀 {fila['Crecimiento Anual']:.1f}%",
+                    "Potencial 4Años": f"{fila['Potencial 4A']:.1f}%",
+                    "Ratio R:B": f"1 : {fila['Ratio R:B']:.1f}",
+                    "Dividendo": formatear_dividendo(fila["Dividendo"]),
+                    "RSI": fila["RSI"],
+                    "Beta": fila["Beta"],
+                    "Alerta Volatilidad": fila["Alerta Volatilidad"],
+                    "Volumen H.F.": fila["Volumen H.F."],
+                    "Interés Inst.": "🎯 FUERTE" if fila["Pct Institucional"] and fila["Pct Institucional"] > 0.5 else "🎯 MODERADO" if fila["Pct Institucional"] else "🎯 DÉBIL",
+                    "Pct Institucional": f"{fila['Pct Institucional']*100:.1f}%" if fila['Pct Institucional'] else "N/A",
+                    "Market Cap": formatear_market_cap(fila["Market Cap"]),
+                    "Capital Invertido Base": max_por_accion,
+                    "Capital Invertido": f"{max_por_accion:.2f} {prop['moneda_nuevo']}",
+                    "Fecha Compra": fecha_compra,
+                    "Candado": f"🔒 {fecha_liberacion}",
+                    "Moneda": fila["Moneda"]
+                }
+
+                df_nueva = pd.DataFrame([nueva_posicion])
+                st.session_state.cartera_compras = pd.concat([cartera_actual, df_nueva], ignore_index=True)
+                guardar_cartera(st.session_state.cartera_compras)
+                registrar_compra(prop['comprar'], max_por_accion)
+
+                st.session_state.propuesta_sustitucion = None
+                st.success(f"✅ Sustitución ejecutada: {prop['vender']} → {prop['comprar']}")
+                st.rerun()
+
+        with col_ko:
+            if st.button("❌ RECHAZAR SUSTITUCIÓN", key="reject_sustitucion"):
+                st.session_state.propuesta_sustitucion = None
+                st.info("❌ Sustitución rechazada. La propuesta se ha descartado.")
+                st.rerun()
+
     if not df_mostrar.empty:
         st.write("---")
         st.write("### 🧠 Análisis de tu Cartera")
@@ -1166,9 +1296,9 @@ with pestaña2:
                     p_minimo_50 = h['Close'].iloc[-50:].min()
 
                     rsi_valor = calcular_rsi(h)
-                    beta_valor = calcular_beta(h)
+                    beta_valor = calcular_beta(h, beta_info)
 
-                    target_val, div_yield, moneda, pct_inst, market_cap, sector = obtener_info_segura(tick)
+                    target_val, div_yield, moneda, pct_inst, market_cap, sector, beta_info = obtener_info_segura(tick)
 
                     if div_yield is None or div_yield == 0:
                         div_yield = calcular_dividend_yield(h, p_actual, tick)
@@ -1324,9 +1454,9 @@ with pestaña2:
                         p_media = h['Close'].iloc[-50:].mean()
                         p_minimo = h['Close'].iloc[-50:].min()
                         rsi_valor = calcular_rsi(h)
-                        beta_valor = calcular_beta(h)
+                        beta_valor = calcular_beta(h, beta_info)
 
-                        target_val, div_yield, moneda, pct_inst, market_cap, sector = obtener_info_segura(tick)
+                        target_val, div_yield, moneda, pct_inst, market_cap, sector, beta_info = obtener_info_segura(tick)
 
                         if div_yield is None or div_yield == 0:
                             div_yield = calcular_dividend_yield(h, p_actual, tick)
