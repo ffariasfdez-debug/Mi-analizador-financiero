@@ -847,9 +847,7 @@ with pestaña1:
                         rsi_valor, beta_valor, fuerza_volumen, historial
                     )
 
-                    # Mostrar alerta de caída violenta si existe
-                    if alerta_caida:
-                        st.warning(f"⚠️ {alerta_caida}")
+                    # La alerta de caída se muestra en la columna Motivo
 
                     sym = simbolo_moneda(moneda_detectada)
 
@@ -871,7 +869,7 @@ with pestaña1:
                         "Pct Institucional": pct_inst,
                         "Market Cap": market_cap,
                         "Sector": sector,
-                        "Motivo": "; ".join(motivos) if motivos else "Sin fortalezas destacadas"
+                        "Motivo": (f"🚨 {alerta_caida}; " if alerta_caida else "") + "; ".join(motivos) if motivos else (f"🚨 {alerta_caida}" if alerta_caida else "Sin fortalezas destacadas")
                     })
                 except Exception as e:
                     resultados_analisis.append({
@@ -1210,9 +1208,7 @@ with pestaña2:
                         rsi_valor, beta_valor, fuerza_volumen_ind, h
                     )
 
-                    # Mostrar alerta de caída violenta si existe
-                    if alerta_caida:
-                        st.error(f"🚨 {alerta_caida}")
+                    # La alerta de caída se muestra en el detalle de puntuación
 
                     alerta_vol = ""
                     if beta_valor is not None and beta_valor > 2.0:
@@ -1255,7 +1251,10 @@ with pestaña2:
 
                     col_sem = st.columns([1, 2, 1])[1]
                     with col_sem:
-                        if score >= 8:
+                        if alerta_caida:
+                            st.error(f"## 🚨 {alerta_caida}")
+                            st.error("## 🔴 NO COMPRAR / PELIGRO")
+                        elif score >= 8:
                             st.success("## 🟢 COMPRA FUERTE")
                         elif score >= 5:
                             st.warning("## 🟡 COMPRA MODERADA")
@@ -1264,7 +1263,8 @@ with pestaña2:
                         else:
                             st.error("## 🔴 NO COMPRAR / ESPERAR")
                         st.write(f"**Score: {score}/11**")
-                        st.write(f"**Motivos:** {', '.join(motivos) if motivos else 'Sin fortalezas'}")
+                        motivos_display = [f"🚨 {alerta_caida}"] + motivos if alerta_caida else motivos
+                        st.write(f"**Motivos:** {', '.join(motivos_display) if motivos_display else 'Sin fortalezas'}")
 
                     with st.expander("📋 Detalle de puntuación"):
                         st.write("**Puntuación:**")
@@ -1384,7 +1384,7 @@ with pestaña2:
                             "RSI": f"{rsi_valor:.1f}",
                             "Beta": f"{beta_valor:.2f}" if beta_valor is not None else "N/A",
                             "Alerta Volatilidad": alerta_vol,
-                            "Motivo": "; ".join(motivos) if motivos else "Sin fortalezas"
+                            "Motivo": (f"🚨 {alerta_caida}; " if alerta_caida else "") + "; ".join(motivos) if motivos else (f"🚨 {alerta_caida}" if alerta_caida else "Sin fortalezas")
                         })
                     except Exception as e:
                         datos_lista.append({
