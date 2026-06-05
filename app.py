@@ -408,39 +408,35 @@ if not st.session_state.listas_guardadas:
     st.session_state.listas_guardadas = LISTAS_DEFINITIVAS.copy()
 
 # ============================================================================
-# INICIALIZACION DE CARTERA - CORREGIDA PARA PERSISTENCIA
-# Streamlit reinicia el script en cada interacción, por lo que session_state
-# puede perderse. SIEMPRE cargamos desde archivo CSV si existe.
+# INICIALIZACION DE CARTERA - VERSIÓN ROBUSTA
+# Streamlit reinicia el script en cada interacción. La cartera se guarda en
+# archivo CSV y DEBE recargarse en cada ejecución para ser persistente.
 # ============================================================================
 
-# Inicializar cartera_compras en session_state si no existe
-if "cartera_compras" not in st.session_state:
-    st.session_state.cartera_compras = pd.DataFrame()
-
-# PRIORIDAD 1: Si existe el archivo CSV, cargar desde ahí (fuente de verdad)
+# SIEMPRE intentar cargar desde archivo primero (fuente de verdad)
+cartera_cargada = pd.DataFrame()
 if os.path.exists(ARCHIVO_CARTERA):
     try:
-        df_cargada = pd.read_csv(ARCHIVO_CARTERA)
-        if not df_cargada.empty:
-            if 'Moneda' not in df_cargada.columns:
-                df_cargada['Moneda'] = 'USD'
-            df_cargada = regenerar_textos_moneda(df_cargada)
-            # Solo actualizar si hay datos nuevos o diferentes
-            if len(df_cargada) != len(st.session_state.cartera_compras):
-                st.session_state.cartera_compras = df_cargada
-                st.toast(f"💾 Cartera cargada: {len(df_cargada)} posiciones")
-        else:
-            st.session_state.cartera_compras = pd.DataFrame()
+        df_leida = pd.read_csv(ARCHIVO_CARTERA)
+        if not df_leida.empty:
+            if 'Moneda' not in df_leida.columns:
+                df_leida['Moneda'] = 'USD'
+            df_leida = regenerar_textos_moneda(df_leida)
+            cartera_cargada = df_leida
     except Exception as e:
-        st.warning(f"⚠️ Error cargando cartera: {e}")
-        st.session_state.cartera_compras = pd.DataFrame()
-else:
-    # Si no existe archivo, dejar vacío
-    st.session_state.cartera_compras = pd.DataFrame()
+        st.error(f"⚠️ Error cargando cartera: {e}")
 
-# Asegurar que es DataFrame
-if not isinstance(st.session_state.cartera_compras, pd.DataFrame):
-    st.session_state.cartera_compras = pd.DataFrame()
+# Asignar a session_state (sobrescribe lo que haya, priorizando el archivo)
+st.session_state.cartera_compras = cartera_cargada
+
+# Debug: mostrar estado de carga
+if not cartera_cargada.empty:
+    st.toast(f"💾 Cartera cargada: {len(cartera_cargada)} posiciones desde archivo")
+else:
+    if os.path.exists(ARCHIVO_CARTERA):
+        st.toast("📂 Archivo de cartera existe pero está vacío")
+    else:
+        st.toast("📂 No hay archivo de cartera guardado")
 
 if "params_bot" not in st.session_state:
     st.session_state.params_bot = {
