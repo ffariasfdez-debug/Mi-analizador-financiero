@@ -1225,18 +1225,18 @@ with pestaña2:
                     col_sem1, col_sem2, col_sem3 = st.columns([1, 2, 1])
                     with col_sem2:
                         # Criterios para colores individuales
-                    tiene_potencial_fuerte = potencial_val > 50 or ratio_rb > 2.0
-                    tiene_potencial_moderado = potencial_val > 20 or ratio_rb > 1.0
+                        tiene_potencial_fuerte = potencial_val > 50 or ratio_rb > 2.0
+                        tiene_potencial_moderado = potencial_val > 20 or ratio_rb > 1.0
 
-                    if puntos_semaforo >= 4 and tiene_potencial_fuerte:
+                        if puntos_semaforo >= 4 and tiene_potencial_fuerte:
                             st.success("## 🟢 COMPRA FUERTE")
                             st.write(f"**Puntuación: {puntos_semaforo:.1f}/6**")
                             st.write("Excelente combinación de potencial, tendencia y riesgo controlado.")
-                    elif puntos_semaforo >= 2 and tiene_potencial_moderado:
+                        elif puntos_semaforo >= 2 and tiene_potencial_moderado:
                             st.warning("## 🟡 COMPRA MODERADA")
                             st.write(f"**Puntuación: {puntos_semaforo:.1f}/6**")
                             st.write("Hay potencial pero con riesgos. Considerar posición menor o esperar confirmación.")
-                    else:
+                        else:
                             st.error("## 🔴 NO COMPRAR / ESPERAR")
                             st.write(f"**Puntuación: {puntos_semaforo:.1f}/6**")
                             st.write("Poco potencial, en corrección o riesgo desproporcionado. Mejor esperar.")
