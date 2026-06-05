@@ -1453,10 +1453,10 @@ with pestaña2:
                         p_actual = h['Close'].iloc[-1]
                         p_media = h['Close'].iloc[-50:].mean()
                         p_minimo = h['Close'].iloc[-50:].min()
+                        target_val, div_yield, moneda, pct_inst, market_cap, sector, beta_info = obtener_info_segura(tick)
+
                         rsi_valor = calcular_rsi(h)
                         beta_valor = calcular_beta(h, beta_info)
-
-                        target_val, div_yield, moneda, pct_inst, market_cap, sector, beta_info = obtener_info_segura(tick)
 
                         if div_yield is None or div_yield == 0:
                             div_yield = calcular_dividend_yield(h, p_actual, tick)
