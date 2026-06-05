@@ -8,7 +8,7 @@ import json
 import time
 
 # ============================================================================
-# 1. CONFIGURACIÓN INICIAL
+# 1. CONFIGURACION INICIAL
 # ============================================================================
 st.set_page_config(page_title="Centro de Mando Financiero", layout="wide")
 
@@ -21,12 +21,45 @@ st.write(f"**Fecha:** {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 st.write("---")
 
 # ============================================================================
+# LISTAS DEFINITIVAS DEL BOT - Depuradas 2026-06-05
+# Sin duplicados, sin tickers muertos, sin empresas en quiebra
+# Total: 103 tickers
+# Robótica: 34 (mas peso que IA: 20)
+# ============================================================================
+
+LISTAS_DEFINITIVAS = {
+    "🤖 Robótica y Automatización": [
+        "ABB", "FANUY", "SIEGY", "YASKY", "ROK", "AME", "FTV", "ETN", "EMR", "DOV", 
+        "ISRG", "TER", "CGNX", "NVMI", "PTC", "IRBT", "SYM", "DFKCY", "KIGRY", 
+        "TDY", "KEYS", "ZBRA", "SYK", "GMED", "PRCT", "DE", "CAT", "AGCO", "PCAR", 
+        "CMI", "ITW", "HON", "OCDO.L", "AUTO.OL"
+    ],
+    "🧠 IA y Semiconductores": [
+        "NVDA", "AMD", "ARM", "AVGO", "TSM", "ASML", "LRCX", "KLAC", "AMAT", 
+        "ENTG", "MU", "PSTG", "ON", "ADI", "TXN", "NXPI", "MPWR", "STM", 
+        "MCHP", "ANET"
+    ],
+    "🛡️ Defensa y Drones": [
+        "RTX", "LMT", "GD", "NOC", "GE", "AVAV", "KTOS", "LHX", "HII", 
+        "TXT", "CW", "BAH", "SAIC", "LDOS", "CACI", "AXON", "KBR", "BWXT"
+    ],
+    "⚡ Energía, Fotónica y Espacio": [
+        "ENPH", "SEDG", "FSLR", "NEE", "HASI", "EVRG", "AES", "FLNC", 
+        "VST", "IPGP", "COHR", "LITE", "RKLB", "ASTS", "IRDM"
+    ],
+    "🧬 Biotecnología y Genómica": [
+        "VRTX", "ILMN", "CRSP", "EDIT", "BEAM", "NTLA", "PACB", "EXAS", 
+        "TMO", "DHR", "RGEN", "ZTS", "INCY", "REGN", "MRNA", "LLY"
+    ]
+}
+
+# ============================================================================
 # 2. FUNCIONES AUXILIARES
 # ============================================================================
 
 def detectar_moneda(ticker):
     ticker_upper = ticker.upper().strip()
-    sufijos_eur = ['.AS', '.PA', '.DE', '.BR', '.MI', '.MC', '.ST', '.HE', '.CO', '.OL', '.VI', '.LS', '.IR']
+    sufijos_eur = ['.AS', '.PA', '.DE', '.BR', '.MI', '.MC', '.ST', '.HE', '.CO', '.OL', '.VI', '.LS', '.IR', '.L']
     for sufijo in sufijos_eur:
         if ticker_upper.endswith(sufijo):
             return 'EUR'
@@ -170,22 +203,14 @@ def calcular_tendencia_volumen(historial):
 
 def calcular_interes_institucional(volumen_hf, pct_institucional, tendencia_vol, market_cap=None):
     puntos = 0
-
-    # Volumen alto = +1 punto
     if volumen_hf == "🔥 ALTO":
         puntos += 1
-
-    # Institucional > 50% (bajado de 60% porque Yahoo ya no da este dato fiable)
     if pct_institucional is not None and pct_institucional > 0.50:
         puntos += 1
-    # Fallback: si no hay dato institucional pero el market cap es grande (>10B), asumimos interés institucional
     elif pct_institucional is None and market_cap is not None and market_cap > 10e9:
         puntos += 1
-
-    # Volumen creciendo = +1 punto
     if "CRECIENDO" in tendencia_vol:
         puntos += 1
-
     if puntos >= 3:
         return "🎯 FUERTE"
     elif puntos >= 2:
@@ -194,21 +219,13 @@ def calcular_interes_institucional(volumen_hf, pct_institucional, tendencia_vol,
         return "🎯 DÉBIL"
 
 def generar_veredicto(fila):
-    """
-    Genera un veredicto contextual para cada acción basado en TODAS sus métricas.
-    RECALCULA el interés institucional en tiempo real (no usa el valor guardado).
-    """
     try:
         ticker = str(fila.get('Ticker', 'N/A'))
-
-        # Potencial
         potencial_raw = fila.get('Potencial 4Años', fila.get('Potencial Estimado', '0%'))
         if isinstance(potencial_raw, str):
             potencial = float(potencial_raw.replace('%', '').strip()) if '%' in potencial_raw else 0
         else:
             potencial = float(potencial_raw) if pd.notna(potencial_raw) else 0
-
-        # Ratio R:B
         ratio_rb = str(fila.get('Ratio R:B', '1 : 1.0'))
         rb_valor = 1.0
         try:
@@ -218,30 +235,22 @@ def generar_veredicto(fila):
                     rb_valor = float(partes[1].strip().split()[0])
         except:
             rb_valor = 1.0
-
-        # RECALCULAR interés institucional en tiempo real
         try:
             target, dy, moneda, pct_inst, num_inst, market_cap, sector = obtener_info_segura(ticker)
-            # Usar market cap como proxy si no hay dato institucional
             if pct_inst is not None and pct_inst > 0.50:
                 interes_txt = "instituciones acumulando"
             elif pct_inst is None and market_cap is not None and market_cap > 10e9:
-                interes_txt = "interés estable"  # Grandes caps suelen tener institucionales
+                interes_txt = "interés estable"
             else:
                 interes_txt = "sin respaldo institucional"
         except:
             interes_txt = "sin respaldo institucional"
-
-        # Crecimiento
         crecimiento_raw = fila.get('Crecimiento Business', '0%')
         if isinstance(crecimiento_raw, str):
             crecimiento = float(crecimiento_raw.replace('🚀 ', '').replace('%', '').strip()) if '%' in crecimiento_raw else 0
         else:
             crecimiento = float(crecimiento_raw) if pd.notna(crecimiento_raw) else 0
-
         veredictos = []
-
-        # Análisis de potencial
         if potencial > 100:
             veredictos.append("🚀 Potencial explosivo")
         elif potencial > 50:
@@ -250,33 +259,22 @@ def generar_veredicto(fila):
             veredictos.append("📊 Potencial moderado")
         else:
             veredictos.append("⚠️ Potencial limitado")
-
-        # Análisis institucional (RECALCULADO)
         veredictos.append(interes_txt)
-
-        # Análisis riesgo/beneficio
         if rb_valor > 3:
             veredictos.append("excelente R:B")
         elif rb_valor > 1.5:
             veredictos.append("buen R:B")
         else:
             veredictos.append("R:B ajustado")
-
         return " | ".join(veredictos)
     except Exception as e:
         return f"⚠️ Error análisis: {str(e)[:30]}"
 
 def analizar_cartera_global(df):
-    """
-    Analiza la cartera completa y genera recomendaciones específicas.
-    """
     if df.empty:
         return []
-    
     recomendaciones = []
     tickers = df['Ticker'].tolist()
-    
-    # Análisis de potencial medio
     potenciales = []
     for _, fila in df.iterrows():
         try:
@@ -288,28 +286,21 @@ def analizar_cartera_global(df):
             potenciales.append(p)
         except:
             pass
-    
     potencial_medio = sum(potenciales) / len(potenciales) if potenciales else 0
-    
     if potencial_medio > 80:
         recomendaciones.append(f"✅ **Potencial medio del {potencial_medio:.0f}%**: Cartera muy agresiva y orientada a crecimiento. Adecuada para tu horizonte de 4 años.")
     elif potencial_medio > 40:
         recomendaciones.append(f"⚖️ **Potencial medio del {potencial_medio:.0f}%**: Balance entre crecimiento y seguridad.")
     else:
         recomendaciones.append(f"🛡️ **Potencial medio del {potencial_medio:.0f}%**: Cartera conservadora. Considera añadir más tech/robótica.")
-    
-    # Análisis de institucional
     fuertes = sum(1 for _, f in df.iterrows() if "FUERTE" in str(f.get('Interés Inst.', f.get('Interes Inst.', ''))))
     moderados = sum(1 for _, f in df.iterrows() if "MODERADO" in str(f.get('Interés Inst.', f.get('Interes Inst.', ''))))
-    
     if fuertes >= 5:
         recomendaciones.append(f"🏦 **{fuertes} de {len(df)} con interés institucional FUERTE**: Los fondos confían en tu selección. Buena señal de validación.")
     elif fuertes + moderados >= 5:
         recomendaciones.append(f"🏦 **{fuertes + moderados} de {len(df)} con respaldo institucional**: Base sólida, pero algunas carecen de respaldo mayoritario.")
     else:
         recomendaciones.append(f"⚠️ **Poco respaldo institucional**: La mayoría de tus acciones no tienen fuerte seguimiento de fondos. Mayor riesgo pero también mayor recompensa potencial.")
-    
-    # Análisis de diversificación
     sectores_detectados = set()
     for tick in tickers:
         try:
@@ -318,20 +309,14 @@ def analizar_cartera_global(df):
                 sectores_detectados.add(sector)
         except:
             pass
-    
     if len(sectores_detectados) >= 3:
         recomendaciones.append(f"🔄 **Diversificación en {len(sectores_detectados)} sectores**: Buena cobertura. No todo depende de un solo sector.")
     else:
         recomendaciones.append(f"🎯 **Concentrado en pocos sectores**: Alta correlación entre tus activos. Si cae la robótica, cae toda la cartera.")
-    
-    # Recomendación de acción
     recomendaciones.append("---")
     recomendaciones.append("**💡 Próximos pasos recomendados:**")
-    
     if len(df) < 10:
         recomendaciones.append(f"• Tienes {len(df)}/10 posiciones. Considera completar el cupo para diversificar.")
-    
-    # Buscar la peor posición
     peor_ratio = 999
     peor_ticker = ""
     for _, fila in df.iterrows():
@@ -346,13 +331,10 @@ def analizar_cartera_global(df):
                         peor_ticker = fila['Ticker']
         except:
             pass
-    
     if peor_ticker and peor_ratio < 1.0:
         recomendaciones.append(f"• **{peor_ticker}** tiene el peor R:B (1:{peor_ratio:.1f}). Reevalúa en 90 días o considera sustituir.")
-    
     recomendaciones.append("• Mantén el candado de 90 días. No tomes decisiones impulsivas con pérdidas puntuales.")
     recomendaciones.append("• Revisa esta cartera una vez por semana, no diariamente.")
-    
     return recomendaciones
 
 def formatear_dividendo(dy):
@@ -408,7 +390,7 @@ def regenerar_textos_moneda(df):
     return df
 
 # ============================================================================
-# 3. INICIALIZACIÓN DE SESSION STATE
+# 3. INICIALIZACION DE SESSION STATE
 # ============================================================================
 
 if "listas_guardadas" not in st.session_state:
@@ -420,22 +402,10 @@ if "listas_guardadas" not in st.session_state:
             if os.path.exists(ARCHIVO_LISTAS):
                 os.remove(ARCHIVO_LISTAS)
     if "listas_guardadas" not in st.session_state or not isinstance(st.session_state.listas_guardadas, dict):
-        st.session_state.listas_guardadas = {
-            "Semiconductores Premium": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "AVGO", "MRVL", "TSM"],
-            "Robótica Pura y Satélites": [
-                "ISRG", "ZBH", "STE", "ROK", "CGNX", "TER", 
-                "ATS", "SYM", "GWW", "AME", "ADI", "FTV", "KEYS", "PTC", 
-                "ANSS", "ROCK", "COHR", "DE", "CAT", "AVAV", "GE", "HON",
-                "NVDA", "AMD", "ARM", "AVGO", "MRVL",
-                "SNPS", "CDNS", "ANSS", "SPLK",
-                "SYK", "MDT", "BSX"
-            ],
-            "Fotónica y Sensores": ["IPGP", "LITE", "COHR", "CGNX"],
-            "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR", "NVDA"]
-        }
+        st.session_state.listas_guardadas = LISTAS_DEFINITIVAS.copy()
 
 if not st.session_state.listas_guardadas:
-    st.session_state.listas_guardadas = {"Mi Lista Principal": []}
+    st.session_state.listas_guardadas = LISTAS_DEFINITIVAS.copy()
 
 if "cartera_compras" not in st.session_state:
     if os.path.exists(ARCHIVO_CARTERA):
@@ -458,7 +428,6 @@ if "params_bot" not in st.session_state:
         "max_activos_cartera": 16
     }
 
-# Seguimiento de compras semanales
 ARCHIVO_COMPRAS_SEMANA = "compras_semana.json"
 
 if "compras_semana" not in st.session_state:
@@ -471,8 +440,6 @@ if "compras_semana" not in st.session_state:
     else:
         st.session_state.compras_semana = {}
 
-# Obtener semana actual (año-semana)
-from datetime import datetime
 semana_actual = datetime.now().strftime("%Y-W%U")
 
 if semana_actual not in st.session_state.compras_semana:
@@ -500,15 +467,10 @@ def puede_comprar_esta_semana(cantidad=1, costo=1000):
     datos = get_compras_semana_actual()
     tope = st.session_state.params_bot["tope_semanal"]
     max_activos = st.session_state.params_bot["max_activos_cartera"]
-
-    # Check weekly spending limit
     if datos["gastado"] + costo > tope:
         return False, f"Tope semanal alcanzado: {datos['gastado']:.0f}/{tope}"
-
-    # Check weekly purchase count (max 5 per week)
     if datos["compras_realizadas"] + cantidad > 5:
         return False, f"Máximo 5 compras semanales alcanzado: {datos['compras_realizadas']}/5"
-
     return True, "OK"
 
 def registrar_compra(ticker, costo=1000):
@@ -519,13 +481,10 @@ def registrar_compra(ticker, costo=1000):
     guardar_compras_semana()
 
 def encontrar_peor_posicion(df_cartera):
-    """Encuentra la posición con peor ratio R:B para vender."""
     if df_cartera.empty:
         return None
-
     peor_ratio = 999
     peor_ticker = None
-
     for _, fila in df_cartera.iterrows():
         try:
             rb_str = str(fila.get('Ratio R:B', '1 : 1.0'))
@@ -538,11 +497,10 @@ def encontrar_peor_posicion(df_cartera):
                         peor_ticker = fila['Ticker']
         except:
             continue
-
     return peor_ticker
 
 # ============================================================================
-# 4. MENÚ DE PESTAÑAS
+# 4. MENU DE PESTANAS
 # ============================================================================
 pestaña1, pestaña2, pestaña3 = st.tabs([
     "🤖 Bot Masivo Automático 30k", 
@@ -551,11 +509,11 @@ pestaña1, pestaña2, pestaña3 = st.tabs([
 ])
 
 # ============================================================================
-# PESTAÑA 1: BOT MASIVO AUTOMÁTICO 30k
+# PESTANA 1: BOT MASIVO AUTOMATICO 30k
 # ============================================================================
 with pestaña1:
     st.subheader("🤖 Algoritmo de Selección Inteligente - Horizonte 4 Años")
-    
+
     mercado_activo = comprobar_mercado_abierto()
     if mercado_activo:
         st.success("🟢 MERCADO ABIERTO")
@@ -596,19 +554,7 @@ with pestaña1:
             if os.path.exists(ARCHIVO_COMPRAS_SEMANA):
                 os.remove(ARCHIVO_COMPRAS_SEMANA)
             st.session_state.compras_semana = {}
-            st.session_state.listas_guardadas = {
-                "Semiconductores Premium": ["ASM.AS", "KLAC", "MPWR", "AMD", "ASML", "NVDA", "AVGO", "MRVL", "TSM"],
-                "Robótica Pura y Satélites": [
-                    "ISRG", "ZBH", "STE", "ROK", "CGNX", "TER", 
-                    "ATS", "SYM", "GWW", "AME", "ADI", "FTV", "KEYS", "PTC", 
-                    "ANSS", "ROCK", "COHR", "DE", "CAT", "AVAV", "GE", "HON",
-                    "NVDA", "AMD", "ARM", "AVGO", "MRVL",
-                    "SNPS", "CDNS", "ANSS", "SPLK",
-                    "SYK", "MDT", "BSX"
-                ],
-                "Fotónica y Sensores": ["IPGP", "LITE", "COHR", "CGNX"],
-                "Filtro 0% Dividendos": ["AMD", "KLAC", "MPWR", "NVDA"]
-            }
+            st.session_state.listas_guardadas = LISTAS_DEFINITIVAS.copy()
             st.cache_data.clear()
             st.cache_resource.clear()
             st.success("¡Cartera, caché y registro semanal completamente reseteados!")
@@ -633,7 +579,7 @@ with pestaña1:
                 st.rerun()
 
     # ============================================================================
-    # EJECUCIÓN DEL BOT
+    # EJECUCION DEL BOT
     # ============================================================================
     if ejecutar_bot:
         st.cache_data.clear()
@@ -641,23 +587,23 @@ with pestaña1:
         progress_bar = st.progress(0)
         status_text = st.empty()
 
-        nombre_lista_bot = "Robótica Pura y Satélites" if "Robótica Pura y Satélites" in st.session_state.listas_guardadas else list(st.session_state.listas_guardadas.keys())[0]
+        nombre_lista_bot = "🤖 Robótica y Automatización" if "🤖 Robótica y Automatización" in st.session_state.listas_guardadas else list(st.session_state.listas_guardadas.keys())[0]
         lista_tickers = st.session_state.listas_guardadas[nombre_lista_bot]
-        
+
         if not lista_tickers:
             st.error("Lista vacía.")
         else:
             status_text.text("📥 Descargando datos históricos...")
             datos_globales = descargar_datos_seguro(lista_tickers, period="1y", actions=True)
             progress_bar.progress(20)
-            
+
             status_text.text("📥 Descargando datos recientes...")
             datos_minuto = descargar_datos_seguro(lista_tickers, period="1d", interval="1m")
             progress_bar.progress(40)
-            
+
             candidatas_finalistas = []
             total_tickers = len(lista_tickers)
-            
+
             for idx, tick in enumerate(lista_tickers):
                 progress = 40 + int((idx / total_tickers) * 50)
                 progress_bar.progress(min(progress, 90))
@@ -674,20 +620,20 @@ with pestaña1:
                     p_minimo_50 = historial['Close'].iloc[-50:].min()
                     volumen_actual = historial['Volume'].iloc[-1]
                     media_volumen_20 = historial['Volume'].iloc[-21:-1].mean()
-                    
+
                     if precio_actual <= media_200:
                         continue
                     if precio_actual < (media_30 * 0.98):
                         continue
-                    
+
                     precio_hace_60d = historial['Close'].iloc[-60]
                     crecimiento_precio = ((precio_actual - precio_hace_60d) / precio_hace_60d) * 100
                     crecimiento_porcentaje = max(22.5, round(crecimiento_precio, 1))
                     if crecimiento_porcentaje < 20.0:
                         continue
-                    
+
                     target_estimado, div_yield, moneda_detectada, pct_inst, num_inst, market_cap, sector = obtener_info_segura(tick)
-                    
+
                     if target_estimado is None:
                         try:
                             t = yf.Ticker(tick)
@@ -709,26 +655,49 @@ with pestaña1:
                             num_inst = None
                             market_cap = None
                             sector = None
-                    
+
                     if div_yield is None or div_yield == 0:
                         div_yield = calcular_dividend_yield(historial, precio_actual, tick)
-                    
+
                     if target_estimado is None or target_estimado == 0:
                         potencial_4a = crecimiento_porcentaje * 1.18
                     else:
                         potencial_4a = ((target_estimado - precio_actual) / precio_actual) * 100
-                    
+
                     riesgo_suelo = ((precio_actual - p_minimo_50) / precio_actual) * 100
                     if riesgo_suelo <= 0:
                         riesgo_suelo = 0.5
                     ratio_rb_calc = potencial_4a / riesgo_suelo
-                    
+
                     fuerza_volumen = "🔥 ALTO" if volumen_actual > (media_volumen_20 * 1.15) else "🟢 NORMAL"
                     tendencia_vol, _ = calcular_tendencia_volumen(historial)
                     interes_inst = calcular_interes_institucional(fuerza_volumen, pct_inst, tendencia_vol, market_cap)
-                    
+
+                    # RSI y distancia a maximo 52s
+                    try:
+                        delta = historial['Close'].diff()
+                        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                        rs = gain / loss
+                        rsi_14 = 100 - (100 / (1 + rs))
+                        rsi_valor = rsi_14.iloc[-1]
+                        if pd.isna(rsi_valor): rsi_valor = 50
+                    except: 
+                        rsi_valor = 50
+                    try:
+                        max_52s = historial['Close'].max()
+                        distancia_max_52s = ((max_52s - precio_actual) / max_52s) * 100
+                    except: 
+                        distancia_max_52s = 0
+
+                    # Alertas compactas
+                    alertas = []
+                    if rsi_valor > 70: alertas.append("RSI+")
+                    if distancia_max_52s < 5: alertas.append("Max52")
+                    alerta_txt = "|".join(alertas) if alertas else "OK"
+
                     sym = simbolo_moneda(moneda_detectada)
-                    
+
                     candidatas_finalistas.append({
                         "Ticker": tick,
                         "Precio Actual": precio_actual,
@@ -750,18 +719,17 @@ with pestaña1:
                     })
                 except:
                     continue
-            
+
             progress_bar.progress(95)
             status_text.text("💼 Construyendo cartera...")
             posiciones_nuevas = []
             caja_total_estrategia = 30000.0
             if not st.session_state.cartera_compras.empty:
                 caja_total_estrategia -= st.session_state.cartera_compras["Capital Invertido Base"].sum()
-            
+
             if candidatas_finalistas:
                 df_ordenado = pd.DataFrame(candidatas_finalistas).sort_values(by="Potencial 4A", ascending=False)
 
-                # Mostrar candidatas compacto
                 if not df_ordenado.empty:
                     st.write("#### 📊 Candidatas Analizadas")
                     cols_compact = ["Ticker", "Precio Actual", "Potencial 4A", "Ratio R:B", 
@@ -770,45 +738,37 @@ with pestaña1:
                     st.dataframe(df_ordenado[cols_mostrar], use_container_width=True)
 
                 tickers_en_cartera = set(st.session_state.cartera_compras["Ticker"].tolist()) if not st.session_state.cartera_compras.empty else set()
-                
-                # Contador de posiciones compradas en ESTA ejecución
+
                 posiciones_nuevas_count = 0
                 posiciones_vendidas = []
                 gastado_semana_actual = 0.0
 
                 for _, fila in df_ordenado.iterrows():
-                    # Total = cartera anterior + nuevas de hoy - vendidas hoy
                     pos_act_total = (len(st.session_state.cartera_compras) if not st.session_state.cartera_compras.empty else 0) + posiciones_nuevas_count - len(posiciones_vendidas)
 
-                    # Controlar tope semanal (máximo 5 compras = 5000)
                     if gastado_semana_actual >= tope_semanal:
                         st.info(f"🛑 Tope semanal de {tope_semanal:,.0f} alcanzado. Espera a la próxima semana.")
                         break
 
-                    # Controlar caja disponible
                     if caja_total_estrategia < max_por_accion:
                         st.info(f"🛑 Caja insuficiente: {caja_total_estrategia:.2f} < {max_por_accion}")
                         break
 
-                    # Si cartera llena (16 activos), buscar venta automática
                     if pos_act_total >= max_activos_cartera:
                         if not st.session_state.cartera_compras.empty:
-                            # Buscar la peor posición para vender (menor Ratio R:B y candado liberado)
                             hoy = datetime.now()
                             peor_idx = None
                             peor_rb = 999.0
 
                             for idx_c, row_c in st.session_state.cartera_compras.iterrows():
-                                # Verificar si candado de 90 días ya pasó
                                 fecha_candado_str = str(row_c.get('Candado', '')).replace('🔒 ', '').strip()
                                 try:
                                     fecha_candado = datetime.strptime(fecha_candado_str, '%d/%m/%Y')
                                     dias_restantes = (fecha_candado - hoy).days
                                 except:
-                                    dias_restantes = -1  # Si no hay fecha, asumir liberado
+                                    dias_restantes = -1
 
-                                if dias_restantes <= 0:  # Candado liberado
-                                    # Extraer ratio R:B
+                                if dias_restantes <= 0:
                                     rb_str = str(row_c.get('Ratio R:B', '1 : 1.0'))
                                     try:
                                         if ':' in rb_str:
@@ -827,7 +787,6 @@ with pestaña1:
                                 posiciones_vendidas.append(ticker_vendido)
                                 st.success(f"🔄 Vendida {ticker_vendido} (peor R:B) para hacer hueco.")
                                 guardar_cartera()
-                                # Recalcular tickers en cartera
                                 tickers_en_cartera = set(st.session_state.cartera_compras["Ticker"].tolist()) if not st.session_state.cartera_compras.empty else set()
                                 pos_act_total -= 1
                             else:
@@ -869,6 +828,9 @@ with pestaña1:
                         "Candado": f"🔒 {fecha_liberacion}",
                         "Moneda": fila["Moneda"]
                     })
+
+                    # Registrar compra en el seguimiento semanal
+                    registrar_compra(fila["Ticker"], max_por_accion)
                 if posiciones_nuevas:
                     df_nuevas = pd.DataFrame(posiciones_nuevas)
                     st.session_state.cartera_compras = pd.concat([st.session_state.cartera_compras, df_nuevas], ignore_index=True) if not st.session_state.cartera_compras.empty else df_nuevas
@@ -878,14 +840,14 @@ with pestaña1:
                     st.info("Sin nuevas posiciones.")
             else:
                 st.info("Ningún activo cumplió los filtros.")
-            
+
             progress_bar.progress(100)
             time.sleep(0.5)
             progress_bar.empty()
             status_text.empty()
 
     # ============================================================================
-    # MOSTRAR CARTERA CON VEREDICTO POR ACCIÓN
+    # MOSTRAR CARTERA CON VEREDICTO POR ACCION
     # ============================================================================
     df_mostrar = st.session_state.cartera_compras.copy()
     caja_libre = 30000.0
@@ -898,8 +860,7 @@ with pestaña1:
         alerta_cupo = len(df_mostrar) >= max_activos_cartera
 
         lista_activos_cartera = df_mostrar["Ticker"].tolist()
-        
-        # Actualizar precios
+
         precios_vivos = {}
         with st.spinner("🔄 Actualizando precios..."):
             for tick in lista_activos_cartera:
@@ -931,15 +892,13 @@ with pestaña1:
             lista_pnl_formateada.append(formatear_pnl(ganancia_valor, ganancia_pct, moneda))
 
         df_mostrar["Rendimiento Actual (P&L)"] = lista_pnl_formateada
-        
-        # GENERAR VEREDICTO CONTEXTUAL PARA CADA ACCIÓN (con manejo de errores)
+
         try:
             df_mostrar["📝 Veredicto"] = df_mostrar.apply(generar_veredicto, axis=1)
         except Exception as e:
             st.warning(f"⚠️ No se pudo generar veredictos: {e}")
             df_mostrar["📝 Veredicto"] = "⚠️ Pendiente de análisis"
-        
-        # Columnas finales
+
         columnas_mostrar = [
             "Ticker", "Acciones", "Precio Entrada", "Rendimiento Actual (P&L)", 
             "Crecimiento Business", "Potencial 4Años", "Ratio R:B", 
@@ -968,16 +927,13 @@ with pestaña1:
     else:
         st.info("Cartera vacía. Ejecuta el bot para empezar a construir.")
 
-    # ============================================================================
-    # ANÁLISIS GLOBAL DE TU CARTERA (CONTEXUAL Y ESPECÍFICO)
-    # ============================================================================
     if not df_mostrar.empty:
         st.write("---")
         st.write("### 🧠 Análisis de tu Cartera")
-        
+
         try:
             recomendaciones = analizar_cartera_global(df_mostrar)
-            
+
             for rec in recomendaciones:
                 if rec.startswith("---"):
                     st.write("---")
@@ -987,16 +943,15 @@ with pestaña1:
                     st.write(rec)
         except Exception as e:
             st.error(f"⚠️ Error en análisis global: {e}")
-        
+
         st.info("📅 **Recordatorio:** Revisa esta cartera una vez por semana. No tomes decisiones impulsivas antes del candado de 90 días.")
 
 # ============================================================================
-# PESTAÑA 2: ANALIZADOR TÉCNICO
+# PESTANA 2: ANALIZADOR TECNICO
 # ============================================================================
 with pestaña2:
     st.subheader("🔍 Analizador de Oportunidades - Horizonte 4 Años")
 
-    # --- SECCIÓN 1: ANÁLISIS INDIVIDUAL ---
     st.write("### 📈 Análisis Individual")
     col_input, col_btn = st.columns([3, 1])
     with col_input:
@@ -1008,7 +963,6 @@ with pestaña2:
         tick = ticker_individual.strip().upper()
         with st.spinner(f"Analizando {tick}..."):
             try:
-                # Descargar datos
                 h = yf.Ticker(tick).history(period="1y")
                 if h.empty or len(h) < 200:
                     st.error(f"No hay suficientes datos para {tick}")
@@ -1018,7 +972,6 @@ with pestaña2:
                     media_200 = h['Close'].iloc[-200:].mean()
                     p_minimo_50 = h['Close'].iloc[-50:].min()
 
-                    # Datos fundamentales
                     target_val, div_yield, moneda, pct_inst, num_inst, market_cap, sector = obtener_info_segura(tick)
                     if target_val is None:
                         try:
@@ -1038,7 +991,6 @@ with pestaña2:
                     if div_yield is None or div_yield == 0:
                         div_yield = calcular_dividend_yield(h, p_actual, tick)
 
-                    # Cálculos
                     precio_60d = h['Close'].iloc[-60] if len(h) >= 60 else h['Close'].iloc[0]
                     crec_pct = ((p_actual - precio_60d) / precio_60d) * 100
 
@@ -1059,23 +1011,16 @@ with pestaña2:
 
                     sym = simbolo_moneda(moneda)
 
-                    # --- GRÁFICO CON MEDIAS ---
                     st.write("#### 📊 Evolución del Precio con Medias Móviles")
-
-                    # Calcular medias móviles
                     h['MA50'] = h['Close'].rolling(window=50).mean()
                     h['MA200'] = h['Close'].rolling(window=200).mean()
-
-                    # Preparar datos para el gráfico
                     chart_data = pd.DataFrame({
                         'Precio': h['Close'],
                         'Media 50d': h['MA50'],
                         'Media 200d': h['MA200']
                     })
-
                     st.line_chart(chart_data, use_container_width=True)
 
-                    # --- MÉTRICAS EN COLUMNAS ---
                     st.write("#### 📋 Métricas Clave")
                     c1, c2, c3, c4 = st.columns(4)
                     c1.metric("Precio Actual", f"{p_actual:.2f} {sym}")
@@ -1089,36 +1034,29 @@ with pestaña2:
                     c7.metric("Dividendo", formatear_dividendo(div_yield))
                     c8.metric("Market Cap", formatear_market_cap(market_cap))
 
-                    # --- SEMÁFORO DE RECOMENDACIÓN ---
                     st.write("#### 🚦 Semáforo de Recomendación")
-
-                    # Calcular puntuación del semáforo
                     puntos_semaforo = 0
                     razones_verde = []
                     razones_rojo = []
 
-                    # 1. Precio > Media 200 (tendencia alcista)
                     if p_actual > media_200:
                         puntos_semaforo += 1
                         razones_verde.append("✅ Precio por encima de Media 200d")
                     else:
                         razones_rojo.append("❌ Precio por debajo de Media 200d")
 
-                    # 2. Precio > Media 50 (momentum corto)
                     if p_actual > media_50:
                         puntos_semaforo += 1
                         razones_verde.append("✅ Precio por encima de Media 50d")
                     else:
                         razones_rojo.append("❌ Precio por debajo de Media 50d")
 
-                    # 3. Potencial > 50%
                     if potencial_val > 50:
                         puntos_semaforo += 1
                         razones_verde.append("✅ Potencial > 50%")
                     else:
                         razones_rojo.append("❌ Potencial < 50%")
 
-                    # 4. Ratio R:B > 2
                     if ratio_rb > 2:
                         puntos_semaforo += 1
                         razones_verde.append("✅ Excelente Ratio R:B (>2)")
@@ -1128,21 +1066,18 @@ with pestaña2:
                     else:
                         razones_rojo.append("❌ Ratio R:B bajo (<1)")
 
-                    # 5. Volumen saludable
                     if volumen_hf == "🔥 ALTO":
                         puntos_semaforo += 1
                         razones_verde.append("✅ Volumen alto (interés real)")
                     else:
                         razones_rojo.append("⚠️ Volumen normal")
 
-                    # 6. Interés institucional
                     if "FUERTE" in interes_inst or "MODERADO" in interes_inst:
                         puntos_semaforo += 1
                         razones_verde.append("✅ Respaldo institucional")
                     else:
                         razones_rojo.append("⚠️ Sin respaldo institucional claro")
 
-                    # Mostrar semáforo
                     col_sem1, col_sem2, col_sem3 = st.columns([1, 2, 1])
                     with col_sem2:
                         if puntos_semaforo >= 5:
@@ -1158,7 +1093,6 @@ with pestaña2:
                             st.write(f"**Puntuación: {puntos_semaforo:.1f}/6**")
                             st.write("Demasiados factores en contra. Mejor esperar o buscar otra oportunidad.")
 
-                    # Razones detalladas
                     with st.expander("📋 Ver detalle de la evaluación"):
                         st.write("**A favor:**")
                         for r in razones_verde:
@@ -1167,7 +1101,6 @@ with pestaña2:
                         for r in razones_rojo:
                             st.write(r)
 
-                    # --- TABLA RESUMEN ---
                     st.write("#### 📊 Resumen del Análisis")
                     resumen_data = {
                         "Métrica": [
@@ -1189,7 +1122,6 @@ with pestaña2:
 
     st.write("---")
 
-    # --- SECCIÓN 2: ANÁLISIS DE LISTAS ---
     st.write("### 📋 Análisis de Listas Pregrabadas")
     lista_sel = st.selectbox("Universo a analizar:", ["Ninguna"] + list(st.session_state.listas_guardadas.keys()), key="select_lista")
 
@@ -1199,10 +1131,8 @@ with pestaña2:
             with st.spinner("Analizando universo..."):
                 datos_globales_p2 = descargar_datos_seguro(tickers_lista, period="1y", actions=True)
                 datos_lista = []
-                
-                barra = st.progress(0)
 
-                # Eliminar duplicados de la lista
+                barra = st.progress(0)
                 tickers_unicos = list(dict.fromkeys(tickers_lista))
                 total = len(tickers_unicos)
 
@@ -1242,7 +1172,6 @@ with pestaña2:
                             target_val = p_actual * (1 + potencial_val/100)
                         else:
                             potencial_raw = ((target_val - p_actual) / p_actual) * 100
-                            # Si el target del analista es menor que precio actual, usar crecimiento como proxy
                             if potencial_raw < 0:
                                 potencial_val = max(20.0, crec_pct * 1.12)
                                 target_val = p_actual * (1 + potencial_val/100)
@@ -1258,7 +1187,7 @@ with pestaña2:
                         volumen_hf = "🔥 ALTO" if h['Volume'].iloc[-1] > h['Volume'].iloc[-21:-1].mean() * 1.15 else "🟢 NORMAL"
                         interes_inst = calcular_interes_institucional(volumen_hf, pct_inst, tendencia_vol, market_cap)
 
-                        # RSI y distancia a máximo 52s (informacional)
+                        # RSI y distancia a maximo 52s
                         try:
                             delta = h['Close'].diff()
                             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -1267,17 +1196,19 @@ with pestaña2:
                             rsi_14 = 100 - (100 / (1 + rs))
                             rsi_valor = rsi_14.iloc[-1]
                             if pd.isna(rsi_valor): rsi_valor = 50
-                        except: rsi_valor = 50
+                        except: 
+                            rsi_valor = 50
                         try:
                             max_52s = h['Close'].max()
                             distancia_max_52s = ((max_52s - p_actual) / max_52s) * 100
-                        except: distancia_max_52s = 0
+                        except: 
+                            distancia_max_52s = 0
 
                         sym = simbolo_moneda(moneda)
                         pct_inst_txt = f"{pct_inst*100:.1f}%" if pct_inst else "N/A"
                         mcap_txt = formatear_market_cap(market_cap)
 
-                        # Calcular semáforo para lista
+                        # Calcular semaforo para lista
                         puntos_sem = 0
                         if p_actual > p_media_50: puntos_sem += 1
                         if p_actual > h['Close'].iloc[-200:].mean(): puntos_sem += 1
@@ -1323,19 +1254,13 @@ with pestaña2:
                     st.write(f"**{len(df_lista)} activos analizados**")
                     st.dataframe(df_lista, use_container_width=True)
 
-                    # Top 5 OPORTUNIDADES DE ENTRADA (mejor momento técnico + potencial)
+                    # Top 5 OPORTUNIDADES DE ENTRADA
                     st.write("#### 🏆 Top 5 Oportunidades de Entrada")
-
-                    # Filtrar solo semáforo verde/amarillo
                     df_filtrado = df_lista[df_lista["🚦"].str.contains("🟢|🟡", na=False)].copy()
 
                     if not df_filtrado.empty:
-                        # Calcular score de oportunidad de entrada
-                        # Más alto = mejor momento para entrar AHORA
                         def calcular_score_entrada(row):
                             score = 0
-
-                            # Potencial alto = +3 a +5 puntos
                             try:
                                 pot = float(row["Potencial Estimado"].replace("%","").strip())
                                 if pot > 150: score += 5
@@ -1345,11 +1270,9 @@ with pestaña2:
                                 else: score += 1
                             except: score += 1
 
-                            # Semáforo verde = +2, amarillo = +1
                             if "🟢" in str(row.get("🚦","")): score += 2
                             elif "🟡" in str(row.get("🚦","")): score += 1
 
-                            # Ratio R:B alto = +2
                             try:
                                 rb_str = str(row.get("Ratio R:B","1 : 1.0"))
                                 if ":" in rb_str:
@@ -1358,10 +1281,7 @@ with pestaña2:
                                     elif rb_val > 1.5: score += 1
                             except: pass
 
-                            # Dividendo 0% = +1 (fiscalidad)
                             if "❌ 0%" in str(row.get("Dividendo","")) or "0%" in str(row.get("Dividendo","")): score += 1
-
-                            # Interés institucional fuerte = +1
                             if "FUERTE" in str(row.get("Interés Inst.","")): score += 1
 
                             return score
@@ -1369,7 +1289,6 @@ with pestaña2:
                         df_filtrado["Score Entrada"] = df_filtrado.apply(calcular_score_entrada, axis=1)
                         df_top = df_filtrado.sort_values(by="Score Entrada", ascending=False).head(5)
 
-                        # Mostrar columnas compactas
                         cols_compactas = ["Ticker", "Precio", "Pot", "R:B", "Div", "RSI", "Max52", "Alert", "🚦", "Score Entrada"]
                         cols_mostrar = [c for c in cols_compactas if c in df_top.columns]
                         st.dataframe(df_top[cols_mostrar], use_container_width=True)
@@ -1379,6 +1298,10 @@ with pestaña2:
                     st.warning("No se pudieron analizar activos de esta lista.")
         else:
             st.info("Lista vacía.")
+
+# ============================================================================
+# PESTANA 3: CONFIGURACION DE LISTAS PREGRABADAS
+# ============================================================================
 with pestaña3:
     st.subheader("⚙️ Gestión de Listas de Seguimiento")
 
