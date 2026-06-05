@@ -396,16 +396,79 @@ def analizar_cartera_global(df):
     return recomendaciones
 
 # ============================================================================
+# DETECCION DE CAIDA VIOLENTA (FALLING KNIFE)
+# ============================================================================
+
+def detectar_caida_violenta(historial, precio_actual):
+    """
+    Detecta si hay una caída violenta reciente que debería bloquear compras.
+    Devuelve: (es_peligroso, motivo, severidad)
+    severidad: 0=normal, 1=alerta, 2=peligro, 3=extremo
+    """
+    try:
+        # Caída del día vs cierre anterior
+        precio_ayer = historial['Close'].iloc[-2]
+        cambio_hoy = ((precio_actual - precio_ayer) / precio_ayer) * 100
+
+        # Caída vs máximo reciente (20 días)
+        maximo_20d = historial['Close'].iloc[-20:].max()
+        caida_vs_max = ((precio_actual - maximo_20d) / maximo_20d) * 100
+
+        # Volumen de hoy vs media
+        volumen_hoy = historial['Volume'].iloc[-1]
+        media_volumen_20 = historial['Volume'].iloc[-21:-1].mean()
+        ratio_volumen = volumen_hoy / media_volumen_20 if media_volumen_20 > 0 else 1
+
+        # CRITERIO 1: Caída diaria extrema
+        if cambio_hoy < -10:
+            if ratio_volumen > 2.5:
+                return True, f"CAIDA VIOLENTA: {cambio_hoy:.1f}% hoy con volumen x{ratio_volumen:.1f} (pánico institucional)", 3
+            else:
+                return True, f"CAIDA EXTREMA: {cambio_hoy:.1f}% en un día", 3
+        elif cambio_hoy < -7:
+            if ratio_volumen > 2.0:
+                return True, f"CAIDA FUERTE: {cambio_hoy:.1f}% con volumen x{ratio_volumen:.1f}", 2
+            else:
+                return True, f"CAIDA FUERTE: {cambio_hoy:.1f}%", 2
+        elif cambio_hoy < -5:
+            return True, f"CAIDA SIGNIFICATIVA: {cambio_hoy:.1f}%", 1
+
+        # CRITERIO 2: Caída acelerada vs máximo reciente
+        if caida_vs_max < -20 and cambio_hoy < -3:
+            return True, f"EN CAIDA LIBRE: -{abs(caida_vs_max):.1f}% desde máximo 20d, hoy {cambio_hoy:.1f}%", 2
+
+        # CRITERIO 3: Ruptura de soporte (precio bajo mínimo 20 días)
+        minimo_20d = historial['Close'].iloc[-20:].min()
+        if precio_actual < minimo_20d * 0.98 and cambio_hoy < -3:
+            return True, f"RUPTURA DE SOPORTE: rompió mínimo 20d con {cambio_hoy:.1f}%", 2
+
+        return False, "", 0
+
+    except Exception as e:
+        return False, "", 0
+
+# ============================================================================
 # FUNCION DE SCORING UNIFICADA
 # ============================================================================
 
 def calcular_score_unificado(precio_actual, media_30, media_200, crecimiento_porcentaje, 
                              potencial_4a, tiene_target, ratio_rb_calc, div_yield, 
-                             rsi_valor, beta_valor, fuerza_volumen):
+                             rsi_valor, beta_valor, fuerza_volumen, historial=None):
     """
     Calcula el score de forma unificada para Bot y Analizador.
-    Devuelve: (score, status, motivos_list)
+    Si se pasa historial, detecta caídas violentas.
+    Devuelve: (score, status, motivos_list, alerta_caida)
     """
+    # DETECTAR CAIDA VIOLENTA PRIMERO
+    alerta_caida = None
+    if historial is not None:
+        es_peligroso, motivo_caida, severidad = detectar_caida_violenta(historial, precio_actual)
+        if es_peligroso:
+            alerta_caida = motivo_caida
+            # Si es caída extrema, devolver score 0 y status de peligro
+            if severidad >= 2:
+                return 0, "🔴 NO COMPRAR", [motivo_caida], alerta_caida
+
     score = 0
     motivos = []
 
@@ -489,7 +552,7 @@ def calcular_score_unificado(precio_actual, media_30, media_200, crecimiento_por
     else:
         status = "🔴 ESPERAR"
 
-    return score, status, motivos
+    return score, status, motivos, alerta_caida
 
 # ============================================================================
 # INICIALIZACION DE SESSION STATE
@@ -778,11 +841,15 @@ with pestaña1:
                         alerta_vol = "⚡ Volátil"
 
                     # SCORING UNIFICADO
-                    score, status, motivos = calcular_score_unificado(
+                    score, status, motivos, alerta_caida = calcular_score_unificado(
                         precio_actual, media_30, media_200, crecimiento_porcentaje,
                         potencial_4a, tiene_target, ratio_rb_calc, div_yield,
-                        rsi_valor, beta_valor, fuerza_volumen
+                        rsi_valor, beta_valor, fuerza_volumen, historial
                     )
+
+                    # Mostrar alerta de caída violenta si existe
+                    if alerta_caida:
+                        st.warning(f"⚠️ {alerta_caida}")
 
                     sym = simbolo_moneda(moneda_detectada)
 
@@ -1137,11 +1204,15 @@ with pestaña2:
                     fuerza_volumen_ind = "🟢 NORMAL"
 
                     # SCORING UNIFICADO (misma función que el Bot)
-                    score, status, motivos = calcular_score_unificado(
+                    score, status, motivos, alerta_caida = calcular_score_unificado(
                         p_actual, media_50, media_200, crec_pct,
                         potencial_val, tiene_target, ratio_rb, div_yield,
-                        rsi_valor, beta_valor, fuerza_volumen_ind
+                        rsi_valor, beta_valor, fuerza_volumen_ind, h
                     )
+
+                    # Mostrar alerta de caída violenta si existe
+                    if alerta_caida:
+                        st.error(f"🚨 {alerta_caida}")
 
                     alerta_vol = ""
                     if beta_valor is not None and beta_valor > 2.0:
@@ -1291,10 +1362,10 @@ with pestaña2:
                         fuerza_volumen_lst = "🔥 ALTO" if volumen_actual > (media_volumen_20 * 1.15) else "🟢 NORMAL"
 
                         # SCORING UNIFICADO (misma función exacta que el Bot)
-                        score, status, motivos = calcular_score_unificado(
+                        score, status, motivos, alerta_caida = calcular_score_unificado(
                             p_actual, p_media, p_media, crec_pct,
                             potencial_val, tiene_target, ratio_rb, div_yield,
-                            rsi_valor, beta_valor, fuerza_volumen_lst
+                            rsi_valor, beta_valor, fuerza_volumen_lst, h
                         )
 
                         alerta_vol = ""
