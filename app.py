@@ -409,28 +409,37 @@ if not st.session_state.listas_guardadas:
 
 # ============================================================================
 # INICIALIZACION DE CARTERA - CORREGIDA PARA PERSISTENCIA
-# Siempre intenta cargar desde archivo si la cartera está vacía
+# Streamlit reinicia el script en cada interacción, por lo que session_state
+# puede perderse. SIEMPRE cargamos desde archivo CSV si existe.
 # ============================================================================
+
+# Inicializar cartera_compras en session_state si no existe
 if "cartera_compras" not in st.session_state:
     st.session_state.cartera_compras = pd.DataFrame()
 
-# Cargar desde archivo siempre que sea posible (incluso si session_state existe pero está vacía)
-cartera_vacia = st.session_state.cartera_compras.empty if "cartera_compras" in st.session_state else True
-
-if cartera_vacia and os.path.exists(ARCHIVO_CARTERA):
+# PRIORIDAD 1: Si existe el archivo CSV, cargar desde ahí (fuente de verdad)
+if os.path.exists(ARCHIVO_CARTERA):
     try:
         df_cargada = pd.read_csv(ARCHIVO_CARTERA)
         if not df_cargada.empty:
             if 'Moneda' not in df_cargada.columns:
                 df_cargada['Moneda'] = 'USD'
             df_cargada = regenerar_textos_moneda(df_cargada)
-            st.session_state.cartera_compras = df_cargada
-            st.success(f"💾 Cartera cargada desde archivo: {len(df_cargada)} posiciones")
+            # Solo actualizar si hay datos nuevos o diferentes
+            if len(df_cargada) != len(st.session_state.cartera_compras):
+                st.session_state.cartera_compras = df_cargada
+                st.toast(f"💾 Cartera cargada: {len(df_cargada)} posiciones")
+        else:
+            st.session_state.cartera_compras = pd.DataFrame()
     except Exception as e:
-        st.warning(f"⚠️ No se pudo cargar cartera guardada: {e}")
+        st.warning(f"⚠️ Error cargando cartera: {e}")
         st.session_state.cartera_compras = pd.DataFrame()
+else:
+    # Si no existe archivo, dejar vacío
+    st.session_state.cartera_compras = pd.DataFrame()
 
-if "cartera_compras" not in st.session_state or not isinstance(st.session_state.cartera_compras, pd.DataFrame):
+# Asegurar que es DataFrame
+if not isinstance(st.session_state.cartera_compras, pd.DataFrame):
     st.session_state.cartera_compras = pd.DataFrame()
 
 if "params_bot" not in st.session_state:
@@ -1324,23 +1333,25 @@ with pestaña3:
             # === EDICIÓN DE TICKERS INDIVIDUALES ===
             st.write("**✏️ Editar tickers:**")
 
-            # Mostrar tickers con botón de eliminar individual
-            cols_por_fila = 4
-            for i in range(0, len(tickers_lista), cols_por_fila):
-                cols = st.columns(cols_por_fila)
-                for j, col in enumerate(cols):
-                    idx = i + j
-                    if idx < len(tickers_lista):
-                        ticker_actual = tickers_lista[idx]
-                        with col:
-                            if st.button(f"❌ {ticker_actual}", key=f"del_ticker_{nombre_lista}_{ticker_actual}_{idx}"):
-                                st.session_state.listas_guardadas[nombre_lista].remove(ticker_actual)
-                                guardar_listas()
-                                st.success(f"Eliminado {ticker_actual}")
-                                st.rerun()
+            # ELIMINAR TICKER: Selectbox + botón
+            st.write("*Eliminar ticker:*")
+            col_del_sel, col_del_btn = st.columns([3, 1])
+            with col_del_sel:
+                ticker_a_eliminar = st.selectbox(
+                    f"Seleccionar ticker a eliminar:", 
+                    tickers_lista, 
+                    key=f"del_select_{nombre_lista}"
+                )
+            with col_del_btn:
+                if st.button(f"🗑️ Eliminar", key=f"btn_del_{nombre_lista}"):
+                    if ticker_a_eliminar in st.session_state.listas_guardadas[nombre_lista]:
+                        st.session_state.listas_guardadas[nombre_lista].remove(ticker_a_eliminar)
+                        guardar_listas()
+                        st.success(f"🗑️ Eliminado {ticker_a_eliminar}")
+                        st.rerun()
 
-            # Añadir nuevo ticker a esta lista
-            st.write("**➕ Añadir ticker:**")
+            # AÑADIR TICKER: Text input + botón  
+            st.write("*Añadir ticker:*")
             col_add, col_add_btn = st.columns([3, 1])
             with col_add:
                 nuevo_ticker = st.text_input(f"Ticker a añadir:", key=f"add_ticker_{nombre_lista}")
@@ -1349,7 +1360,7 @@ with pestaña3:
                     if nuevo_ticker and nuevo_ticker.strip().upper() not in [t.upper() for t in st.session_state.listas_guardadas[nombre_lista]]:
                         st.session_state.listas_guardadas[nombre_lista].append(nuevo_ticker.strip().upper())
                         guardar_listas()
-                        st.success(f"Añadido {nuevo_ticker.strip().upper()}")
+                        st.success(f"➕ Añadido {nuevo_ticker.strip().upper()}")
                         st.rerun()
                     else:
                         st.error("Ticker vacío o duplicado")
