@@ -1342,8 +1342,7 @@ with pestaña3:
 
     if st.button("💾 Guardar", key="guardar_nueva"):
         if nombre_nueva and tickers_nueva:
-            tickers_limpios = [t.strip().upper() for t in tickers_nueva.replace("
-", ",").split(",") if t.strip()]
+            tickers_limpios = [t.strip().upper() for t in tickers_nueva.replace("\n", ",").split(",") if t.strip()]
             st.session_state.listas_guardadas[nombre_nueva] = tickers_limpios
             st.success(f"✅ Lista '{nombre_nueva}' guardada ({len(tickers_limpios)} tickers).")
             st.rerun()
