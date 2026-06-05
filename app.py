@@ -576,7 +576,7 @@ with pestaña1:
         )
         st.session_state.params_bot["max_activos_cartera"] = max_activos_cartera
 
-    col_btn1, col_btn2, col_btn3, col_btn4, col_btn5, col_btn6 = st.columns([2, 1, 1, 1, 1, 1])
+    col_btn1, col_btn2, col_btn3, col_btn4, col_btn5, col_btn6, col_btn7 = st.columns([2, 1, 1, 1, 1, 1, 1])
     with col_btn1:
         ejecutar_bot = st.button("🔄 Ejecutar Bot")
     with col_btn2:
@@ -628,7 +628,7 @@ with pestaña1:
             st.button("📥 Exportar", disabled=True, key="export_cartera_disabled")
 
     with col_btn6:
-        archivo_cartera = st.file_uploader("📤 Importar", type=["csv"], key="import_cartera", label_visibility="collapsed")
+        archivo_cartera = st.file_uploader("📤 Importar CSV", type=["csv"], key="import_cartera", label_visibility="collapsed")
         if archivo_cartera is not None:
             try:
                 df_import = pd.read_csv(archivo_cartera)
@@ -641,6 +641,59 @@ with pestaña1:
                     st.rerun()
             except Exception as e:
                 st.error(f"❌ Error importando: {e}")
+
+    # === IMPORTAR CARTERA MANUAL (para recuperar desde Investing u otras fuentes) ===
+    with col_btn7:
+        with st.expander("📥 Importar Manual"):
+            st.write("Introduce tus posiciones actuales:")
+
+            # Formulario para añadir posiciones manualmente
+            ticker_manual = st.text_input("Ticker:", key="manual_ticker", placeholder="Ej: AVGO")
+            precio_manual = st.number_input("Precio de entrada:", min_value=0.01, key="manual_precio", step=0.01)
+            cantidad_manual = st.number_input("Cantidad de acciones:", min_value=0.0001, key="manual_cantidad", step=0.0001, format="%.4f")
+            moneda_manual = st.selectbox("Moneda:", ["USD", "EUR", "GBP"], key="manual_moneda")
+            fecha_manual = st.date_input("Fecha de compra:", datetime.now(), key="manual_fecha")
+
+            if st.button("➕ Añadir a Cartera", key="btn_manual_add"):
+                if ticker_manual and precio_manual > 0 and cantidad_manual > 0:
+                    # Crear DataFrame con la nueva posición
+                    sym = simbolo_moneda(moneda_manual)
+                    nueva_posicion = {
+                        "Ticker": ticker_manual.strip().upper(),
+                        "Acciones": cantidad_manual,
+                        "Precio Entrada Base": precio_manual,
+                        "Precio Entrada": f"{precio_manual:.2f} {sym}",
+                        "Crecimiento Business": "🚀 Manual",
+                        "Potencial 4Años": "N/A",
+                        "Ratio R:B": "1 : 1.0",
+                        "Dividendo": "❌ 0%",
+                        "Interés Inst.": "🎯 MANUAL",
+                        "Pct Institucional": "N/A",
+                        "Market Cap": "N/A",
+                        "Capital Invertido Base": precio_manual * cantidad_manual,
+                        "Capital Invertido": f"{precio_manual * cantidad_manual:.2f} {sym}",
+                        "Fecha Compra": fecha_manual.strftime('%d/%m/%Y'),
+                        "Candado": f"🔒 {(fecha_manual + timedelta(days=90)).strftime('%d/%m/%Y')}",
+                        "Moneda": moneda_manual
+                    }
+
+                    # Añadir a la cartera existente o crear nueva
+                    if st.session_state.cartera_compras.empty:
+                        st.session_state.cartera_compras = pd.DataFrame([nueva_posicion])
+                    else:
+                        # Verificar si ya existe
+                        if ticker_manual.strip().upper() not in st.session_state.cartera_compras['Ticker'].values:
+                            st.session_state.cartera_compras = pd.concat([
+                                st.session_state.cartera_compras, 
+                                pd.DataFrame([nueva_posicion])
+                            ], ignore_index=True)
+                            st.success(f"✅ Añadido {ticker_manual.strip().upper()}")
+                        else:
+                            st.warning(f"⚠️ {ticker_manual.strip().upper()} ya está en la cartera")
+
+                    st.rerun()
+                else:
+                    st.error("Completa todos los campos")
 
     # ============================================================================
     # EJECUCION DEL BOT
@@ -1145,10 +1198,10 @@ with pestaña2:
                     else:
                         razones_rojo.append("❌ Potencial < 50%")
 
-                    if ratio_rb > 2:
+                    if ratio_rb > 2.0:
                         puntos_semaforo += 1
                         razones_verde.append("✅ Excelente Ratio R:B (>2)")
-                    elif ratio_rb > 1:
+                    elif ratio_rb > 1.0:
                         puntos_semaforo += 0.5
                         razones_verde.append("⚠️ Ratio R:B aceptable (>1)")
                     else:
@@ -1160,26 +1213,33 @@ with pestaña2:
                     else:
                         razones_rojo.append("⚠️ Volumen normal")
 
-                    if "FUERTE" in interes_inst or "MODERADO" in interes_inst:
+                    if "FUERTE" in interes_inst:
                         puntos_semaforo += 1
-                        razones_verde.append("✅ Respaldo institucional")
+                        razones_verde.append("✅ Respaldo institucional fuerte")
+                    elif "MODERADO" in interes_inst:
+                        puntos_semaforo += 0.5
+                        razones_verde.append("⚠️ Respaldo institucional moderado")
                     else:
-                        razones_rojo.append("⚠️ Sin respaldo institucional claro")
+                        razones_rojo.append("⚠️ Sin respaldo institucional")
 
                     col_sem1, col_sem2, col_sem3 = st.columns([1, 2, 1])
                     with col_sem2:
-                        if puntos_semaforo >= 4:
+                        # Criterios para colores individuales
+                    tiene_potencial_fuerte = potencial_val > 50 or ratio_rb > 2.0
+                    tiene_potencial_moderado = potencial_val > 20 or ratio_rb > 1.0
+
+                    if puntos_semaforo >= 4 and tiene_potencial_fuerte:
                             st.success("## 🟢 COMPRA FUERTE")
                             st.write(f"**Puntuación: {puntos_semaforo:.1f}/6**")
-                            st.write("Esta acción cumple la mayoría de criterios favorables.")
-                        elif puntos_semaforo >= 2:
+                            st.write("Excelente combinación de potencial, tendencia y riesgo controlado.")
+                    elif puntos_semaforo >= 2 and tiene_potencial_moderado:
                             st.warning("## 🟡 COMPRA MODERADA")
                             st.write(f"**Puntuación: {puntos_semaforo:.1f}/6**")
-                            st.write("Hay aspectos positivos pero también riesgos a considerar.")
-                        else:
+                            st.write("Hay potencial pero con riesgos. Considerar posición menor o esperar confirmación.")
+                    else:
                             st.error("## 🔴 NO COMPRAR / ESPERAR")
                             st.write(f"**Puntuación: {puntos_semaforo:.1f}/6**")
-                            st.write("Demasiados factores en contra. Mejor esperar o buscar otra oportunidad.")
+                            st.write("Poco potencial, en corrección o riesgo desproporcionado. Mejor esperar.")
 
                     with st.expander("📋 Ver detalle de la evaluación"):
                         st.write("**A favor:**")
@@ -1296,19 +1356,28 @@ with pestaña2:
                         pct_inst_txt = f"{pct_inst*100:.1f}%" if pct_inst else "N/A"
                         mcap_txt = formatear_market_cap(market_cap)
 
-                        # Calcular semaforo para lista - CRITERIOS RELAJADOS
-                        # El mercado actual tiene muchos activos en consolidación
+                        # Calcular semaforo para lista - CRITERIOS BALANCEADOS
+                        # 🟢 = Fuerte momentum + buen potencial + tendencia positiva
+                        # 🟡 = Algunos factores positivos pero con riesgos
+                        # 🔴 = Poco potencial, en corrección o riesgo alto
                         puntos_sem = 0
                         if p_actual > p_media_50: puntos_sem += 1
                         if p_actual > h['Close'].iloc[-200:].mean(): puntos_sem += 1
                         if potencial_val > 50: puntos_sem += 1
-                        if ratio_rb > 1.5: puntos_sem += 1  # Relajado de 2.0 a 1.5
-                        if volumen_hf == "🔥 ALTO" or volumen_hf == "🟢 NORMAL": puntos_sem += 0.5  # Cualquier volumen aceptable
-                        if "FUERTE" in interes_inst or "MODERADO" in interes_inst or "DÉBIL" in interes_inst: puntos_sem += 0.5  # Cualquier interés cuenta
+                        if ratio_rb > 2.0: puntos_sem += 1  # R:B fuerte requerido
+                        if volumen_hf == "🔥 ALTO": puntos_sem += 1  # Solo volumen alto cuenta
+                        if "FUERTE" in interes_inst: puntos_sem += 1  # Solo interés FUERTE cuenta
 
-                        if puntos_sem >= 4:  # Relajado de 5 a 4
+                        # Criterios para colores:
+                        # 🟢: Mínimo 4 puntos + potencial >50% o R:B >2
+                        # 🟡: Mínimo 2 puntos + potencial >20% o R:B >1
+                        # 🔴: Resto
+                        tiene_potencial = potencial_val > 50 or ratio_rb > 2.0
+                        tiene_moderado = potencial_val > 20 or ratio_rb > 1.0
+
+                        if puntos_sem >= 4 and tiene_potencial:
                             semaforo = "🟢"
-                        elif puntos_sem >= 2:  # Relajado de 3 a 2
+                        elif puntos_sem >= 2 and tiene_moderado:
                             semaforo = "🟡"
                         else:
                             semaforo = "🔴"
