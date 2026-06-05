@@ -407,19 +407,31 @@ if "listas_guardadas" not in st.session_state:
 if not st.session_state.listas_guardadas:
     st.session_state.listas_guardadas = LISTAS_DEFINITIVAS.copy()
 
+# ============================================================================
+# INICIALIZACION DE CARTERA - CORREGIDA PARA PERSISTENCIA
+# Siempre intenta cargar desde archivo si la cartera está vacía
+# ============================================================================
 if "cartera_compras" not in st.session_state:
-    if os.path.exists(ARCHIVO_CARTERA):
-        try:
-            df_cargada = pd.read_csv(ARCHIVO_CARTERA)
+    st.session_state.cartera_compras = pd.DataFrame()
+
+# Cargar desde archivo siempre que sea posible (incluso si session_state existe pero está vacía)
+cartera_vacia = st.session_state.cartera_compras.empty if "cartera_compras" in st.session_state else True
+
+if cartera_vacia and os.path.exists(ARCHIVO_CARTERA):
+    try:
+        df_cargada = pd.read_csv(ARCHIVO_CARTERA)
+        if not df_cargada.empty:
             if 'Moneda' not in df_cargada.columns:
                 df_cargada['Moneda'] = 'USD'
             df_cargada = regenerar_textos_moneda(df_cargada)
             st.session_state.cartera_compras = df_cargada
-            guardar_cartera()
-        except:
-            st.session_state.cartera_compras = pd.DataFrame()
-    else:
+            st.success(f"💾 Cartera cargada desde archivo: {len(df_cargada)} posiciones")
+    except Exception as e:
+        st.warning(f"⚠️ No se pudo cargar cartera guardada: {e}")
         st.session_state.cartera_compras = pd.DataFrame()
+
+if "cartera_compras" not in st.session_state or not isinstance(st.session_state.cartera_compras, pd.DataFrame):
+    st.session_state.cartera_compras = pd.DataFrame()
 
 if "params_bot" not in st.session_state:
     st.session_state.params_bot = {
@@ -1305,19 +1317,56 @@ with pestaña2:
 with pestaña3:
     st.subheader("⚙️ Gestión de Listas de Seguimiento")
 
-    for nombre_lista, tickers_lista in st.session_state.listas_guardadas.items():
+    for nombre_lista, tickers_lista in list(st.session_state.listas_guardadas.items()):
         with st.expander(f"📋 {nombre_lista} ({len(tickers_lista)} tickers)"):
             st.write(f"**Tickers:** {', '.join(tickers_lista)}")
+
+            # === EDICIÓN DE TICKERS INDIVIDUALES ===
+            st.write("**✏️ Editar tickers:**")
+
+            # Mostrar tickers con botón de eliminar individual
+            cols_por_fila = 4
+            for i in range(0, len(tickers_lista), cols_por_fila):
+                cols = st.columns(cols_por_fila)
+                for j, col in enumerate(cols):
+                    idx = i + j
+                    if idx < len(tickers_lista):
+                        ticker_actual = tickers_lista[idx]
+                        with col:
+                            if st.button(f"❌ {ticker_actual}", key=f"del_ticker_{nombre_lista}_{ticker_actual}_{idx}"):
+                                st.session_state.listas_guardadas[nombre_lista].remove(ticker_actual)
+                                guardar_listas()
+                                st.success(f"Eliminado {ticker_actual}")
+                                st.rerun()
+
+            # Añadir nuevo ticker a esta lista
+            st.write("**➕ Añadir ticker:**")
+            col_add, col_add_btn = st.columns([3, 1])
+            with col_add:
+                nuevo_ticker = st.text_input(f"Ticker a añadir:", key=f"add_ticker_{nombre_lista}")
+            with col_add_btn:
+                if st.button(f"➕ Añadir", key=f"btn_add_{nombre_lista}"):
+                    if nuevo_ticker and nuevo_ticker.strip().upper() not in [t.upper() for t in st.session_state.listas_guardadas[nombre_lista]]:
+                        st.session_state.listas_guardadas[nombre_lista].append(nuevo_ticker.strip().upper())
+                        guardar_listas()
+                        st.success(f"Añadido {nuevo_ticker.strip().upper()}")
+                        st.rerun()
+                    else:
+                        st.error("Ticker vacío o duplicado")
+
+            st.write("---")
+
+            # === RENOMBRAR / ELIMINAR LISTA ===
             col_edit, col_del = st.columns([1, 1])
             with col_edit:
-                nuevo_nombre = st.text_input(f"Renombrar:", value=nombre_lista, key=f"rename_{nombre_lista}")
+                nuevo_nombre = st.text_input(f"Renombrar lista:", value=nombre_lista, key=f"rename_{nombre_lista}")
                 if nuevo_nombre != nombre_lista and st.button(f"✅ Guardar nombre", key=f"save_name_{nombre_lista}"):
                     st.session_state.listas_guardadas[nuevo_nombre] = st.session_state.listas_guardadas.pop(nombre_lista)
                     guardar_listas()
                     st.success(f"Lista renombrada a '{nuevo_nombre}'")
                     st.rerun()
             with col_del:
-                if st.button(f"🗑️ Eliminar lista", key=f"del_{nombre_lista}"):
+                if st.button(f"🗑️ Eliminar lista completa", key=f"del_{nombre_lista}"):
                     del st.session_state.listas_guardadas[nombre_lista]
                     guardar_listas()
                     st.success(f"Lista '{nombre_lista}' eliminada.")
@@ -1330,7 +1379,8 @@ with pestaña3:
 
     if st.button("💾 Guardar Nueva Lista", key="guardar_nueva"):
         if nombre_nueva and tickers_nueva:
-            tickers_limpios = [t.strip().upper() for t in tickers_nueva.replace("\n", ",").split(",") if t.strip()]
+            tickers_limpios = [t.strip().upper() for t in tickers_nueva.replace("
+", ",").split(",") if t.strip()]
             st.session_state.listas_guardadas[nombre_nueva] = tickers_limpios
             guardar_listas()
             st.success(f"✅ Lista '{nombre_nueva}' guardada con {len(tickers_limpios)} tickers.")
@@ -1363,6 +1413,5 @@ with pestaña3:
             mime="application/json",
             key="download_json"
         )
-
 st.write("---")
 st.caption("Centro de Mando Financiero Pro | Desarrollado con Streamlit + yFinance | Datos en tiempo real vía Yahoo Finance")
