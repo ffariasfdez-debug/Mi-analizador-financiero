@@ -6,7 +6,6 @@ import pytz
 import json
 import time
 import numpy as np
-
 import os
 
 # ============================================================================
@@ -14,6 +13,7 @@ import os
 # ============================================================================
 CARTERA_FILE = "cartera_guardada.json"
 LISTAS_FILE = "listas_guardadas.json"
+REGISTRO_FILE = "registro_semanal.json"
 
 def cargar_cartera():
     """Carga la cartera desde archivo JSON si existe"""
@@ -52,6 +52,23 @@ def guardar_listas(listas):
     except Exception as e:
         st.error(f"Error guardando listas: {e}")
 
+def cargar_registro():
+    """Carga el registro semanal desde archivo JSON si existe"""
+    if os.path.exists(REGISTRO_FILE):
+        try:
+            with open(REGISTRO_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+def guardar_registro(registro):
+    """Guarda el registro semanal en archivo JSON"""
+    try:
+        with open(REGISTRO_FILE, 'w') as f:
+            json.dump(registro, f, indent=2)
+    except Exception as e:
+        st.error(f"Error guardando registro: {e}")
 
 # ============================================================================
 # CONFIGURACION INICIAL
@@ -101,27 +118,6 @@ TICKER_ALIASES = {
 # ============================================================================
 # FUNCIONES AUXILIARES
 # ============================================================================
-
-
-REGISTRO_FILE = "registro_semanal.json"
-
-def cargar_registro():
-    """Carga el registro semanal desde archivo JSON si existe"""
-    if os.path.exists(REGISTRO_FILE):
-        try:
-            with open(REGISTRO_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            pass
-    return {}
-
-def guardar_registro(registro):
-    """Guarda el registro semanal en archivo JSON"""
-    try:
-        with open(REGISTRO_FILE, 'w') as f:
-            json.dump(registro, f, indent=2)
-    except Exception as e:
-        st.error(f"Error guardando registro: {e}")
 
 def detectar_moneda(ticker):
     ticker_upper = ticker.upper().strip()
@@ -400,6 +396,102 @@ def analizar_cartera_global(df):
     return recomendaciones
 
 # ============================================================================
+# FUNCION DE SCORING UNIFICADA
+# ============================================================================
+
+def calcular_score_unificado(precio_actual, media_30, media_200, crecimiento_porcentaje, 
+                             potencial_4a, tiene_target, ratio_rb_calc, div_yield, 
+                             rsi_valor, beta_valor, fuerza_volumen):
+    """
+    Calcula el score de forma unificada para Bot y Analizador.
+    Devuelve: (score, status, motivos_list)
+    """
+    score = 0
+    motivos = []
+
+    # Tendencia alcista (2 puntos)
+    if precio_actual > media_200:
+        score += 2
+        motivos.append("Tendencia alcista")
+
+    # Momentum (1 punto)
+    if precio_actual > (media_30 * 0.98):
+        score += 1
+        motivos.append("Momentum positivo")
+
+    # Crecimiento reciente (3 puntos)
+    if crecimiento_porcentaje >= 20.0:
+        score += 3
+        motivos.append("Crecimiento fuerte")
+    elif crecimiento_porcentaje >= 10.0:
+        score += 1
+        motivos.append("Crecimiento moderado")
+
+    # Potencial (2 puntos) - diferenciado según disponibilidad de target
+    if tiene_target:
+        if potencial_4a >= 50:
+            score += 2
+            motivos.append("Alto potencial")
+        elif potencial_4a >= 20:
+            score += 1
+            motivos.append("Potencial moderado")
+    else:
+        if potencial_4a >= 30:
+            score += 2
+            motivos.append("Momentum técnico fuerte")
+        elif potencial_4a >= 15:
+            score += 1
+            motivos.append("Momentum técnico moderado")
+
+    # R:B favorable (2 puntos)
+    if ratio_rb_calc >= 2.0:
+        score += 2
+        motivos.append("Excelente R:B")
+    elif ratio_rb_calc >= 1.0:
+        score += 1
+        motivos.append("Buen R:B")
+
+    # Volumen (1 punto)
+    if fuerza_volumen == "🔥 ALTO":
+        score += 1
+        motivos.append("Volumen alto")
+
+    # Dividendo (1 punto)
+    if div_yield and div_yield > 0:
+        score += 1
+        motivos.append("Con dividendo")
+
+    # RSI penalización reforzada
+    if rsi_valor > 70:
+        score -= 3
+        motivos.append(f"⚠️ RSI {rsi_valor:.0f} SOBRECOMPRA (-3)")
+    elif rsi_valor > 65:
+        score -= 1
+        motivos.append(f"⚡ RSI {rsi_valor:.0f} elevado (-1)")
+    elif rsi_valor < 30:
+        score += 1
+        motivos.append(f"RSI {rsi_valor:.0f} sobreventa (+1)")
+
+    # Beta penalización
+    if beta_valor is not None and beta_valor > 2.5:
+        score -= 1
+        motivos.append(f"Beta {beta_valor} muy alto (-1)")
+
+    score = max(0, score)
+
+    # Status según score
+    if score >= 8:
+        status = "🟢 COMPRAR"
+    elif score >= 5:
+        status = "🟡 ACUMULAR"
+    elif score >= 3:
+        status = "🟠 OBSERVAR"
+    else:
+        status = "🔴 ESPERAR"
+
+    return score, status, motivos
+
+# ============================================================================
 # INICIALIZACION DE SESSION STATE
 # ============================================================================
 
@@ -468,7 +560,6 @@ def registrar_compra(ticker, costo=1000):
     datos["tickers_comprados"].append(ticker)
     guardar_registro(st.session_state.registro_semanal)
 
-
 # ============================================================================
 # MENU DE PESTANAS
 # ============================================================================
@@ -517,9 +608,10 @@ with pestaña1:
         )
         st.session_state.params_bot["max_compras_semanal"] = max_compras_sem
 
+    opciones_lista = ["🌍 TODAS LAS LISTAS"] + list(st.session_state.listas_guardadas.keys())
     lista_bot = st.selectbox(
         "Universo a analizar:",
-        list(st.session_state.listas_guardadas.keys()),
+        opciones_lista,
         key="select_lista_bot"
     )
 
@@ -531,10 +623,10 @@ with pestaña1:
             st.session_state.cartera_compras = pd.DataFrame()
             st.session_state.registro_semanal = {}
             st.cache_data.clear()
-            # BORRAR ARCHIVOS DE DISCO
             if os.path.exists(CARTERA_FILE):
                 os.remove(CARTERA_FILE)
-
+            if os.path.exists(REGISTRO_FILE):
+                os.remove(REGISTRO_FILE)
             st.success("¡Cartera y registro reseteados!")
             time.sleep(1)
             st.rerun()
@@ -577,7 +669,16 @@ with pestaña1:
         progress_bar = st.progress(0)
         status_text = st.empty()
 
-        lista_tickers = st.session_state.listas_guardadas[lista_bot]
+        if lista_bot == "🌍 TODAS LAS LISTAS":
+            # Combinar todas las listas, eliminar duplicados
+            lista_tickers = []
+            for lista in st.session_state.listas_guardadas.values():
+                for t in lista:
+                    if t not in lista_tickers:
+                        lista_tickers.append(t)
+            st.info(f"🌍 Analizando {len(lista_tickers)} tickers de todas las listas")
+        else:
+            lista_tickers = st.session_state.listas_guardadas[lista_bot]
 
         if not lista_tickers:
             st.error("Lista vacía.")
@@ -647,7 +748,6 @@ with pestaña1:
                     if div_yield is None or div_yield == 0:
                         div_yield = calcular_dividend_yield(historial, precio_actual, tick)
 
-                    # AJUSTE 3: Target N/A -> modo tecnico puro
                     tiene_target = target_estimado is not None and target_estimado > 0
 
                     potencial_tecnico = crecimiento_porcentaje * 1.18
@@ -671,89 +771,18 @@ with pestaña1:
                     ratio_rb_calc = min(potencial_4a / riesgo_suelo, 10.0)
                     fuerza_volumen = "🔥 ALTO" if volumen_actual > (media_volumen_20 * 1.15) else "🟢 NORMAL"
 
-                    # AJUSTE 2: Alerta de volatilidad
                     alerta_vol = ""
                     if beta_valor is not None and beta_valor > 2.0:
                         alerta_vol = "⚠️ BETA ALTO"
                     elif beta_valor is not None and beta_valor > 1.5:
                         alerta_vol = "⚡ Volátil"
 
-                    # ============================================================
-                    # SISTEMA DE PUNTUACION V3 - CON AJUSTE RSI REFORZADO
-                    # ============================================================
-                    score = 0
-                    motivos = []
-
-                    if precio_actual > media_200:
-                        score += 2
-                        motivos.append("Tendencia alcista")
-
-                    if precio_actual > (media_30 * 0.98):
-                        score += 1
-                        motivos.append("Momentum positivo")
-
-                    if crecimiento_porcentaje >= 20.0:
-                        score += 3
-                        motivos.append("Crecimiento fuerte")
-                    elif crecimiento_porcentaje >= 10.0:
-                        score += 1
-                        motivos.append("Crecimiento moderado")
-
-                    if tiene_target:
-                        if potencial_4a >= 50:
-                            score += 2
-                            motivos.append("Alto potencial")
-                        elif potencial_4a >= 20:
-                            score += 1
-                            motivos.append("Potencial moderado")
-                    else:
-                        if potencial_4a >= 30:
-                            score += 2
-                            motivos.append("Momentum técnico fuerte")
-                        elif potencial_4a >= 15:
-                            score += 1
-                            motivos.append("Momentum técnico moderado")
-
-                    if ratio_rb_calc >= 2.0:
-                        score += 2
-                        motivos.append("Excelente R:B")
-                    elif ratio_rb_calc >= 1.0:
-                        score += 1
-                        motivos.append("Buen R:B")
-
-                    if fuerza_volumen == "🔥 ALTO":
-                        score += 1
-                        motivos.append("Volumen alto")
-
-                    if div_yield and div_yield > 0:
-                        score += 1
-                        motivos.append("Con dividendo")
-
-                    # AJUSTE 1: RSI penalizacion reforzada (-3 puntos si >70)
-                    if rsi_valor > 70:
-                        score -= 3
-                        motivos.append(f"⚠️ RSI {rsi_valor:.0f} SOBRECOMPRA (-3)")
-                    elif rsi_valor > 65:
-                        score -= 1
-                        motivos.append(f"⚡ RSI {rsi_valor:.0f} elevado (-1)")
-                    elif rsi_valor < 30:
-                        score += 1
-                        motivos.append(f"RSI {rsi_valor:.0f} sobreventa (+1)")
-
-                    if beta_valor is not None and beta_valor > 2.5:
-                        score -= 1
-                        motivos.append(f"Beta {beta_valor} muy alto (-1)")
-
-                    score = max(0, score)
-
-                    if score >= 8:
-                        status = "🟢 COMPRAR"
-                    elif score >= 5:
-                        status = "🟡 ACUMULAR"
-                    elif score >= 3:
-                        status = "🟠 OBSERVAR"
-                    else:
-                        status = "🔴 ESPERAR"
+                    # SCORING UNIFICADO
+                    score, status, motivos = calcular_score_unificado(
+                        precio_actual, media_30, media_200, crecimiento_porcentaje,
+                        potencial_4a, tiene_target, ratio_rb_calc, div_yield,
+                        rsi_valor, beta_valor, fuerza_volumen
+                    )
 
                     sym = simbolo_moneda(moneda_detectada)
 
@@ -944,7 +973,6 @@ with pestaña1:
                             [st.session_state.cartera_compras, df_nuevas], 
                             ignore_index=True
                         )
-                    # GUARDAR EN DISCO
                     guardar_cartera(st.session_state.cartera_compras)
 
                     if posiciones_sustituidas:
@@ -1105,51 +1133,21 @@ with pestaña2:
 
                     sym = simbolo_moneda(moneda)
 
+                    # Volumen simplificado para análisis individual
+                    fuerza_volumen_ind = "🟢 NORMAL"
+
+                    # SCORING UNIFICADO (misma función que el Bot)
+                    score, status, motivos = calcular_score_unificado(
+                        p_actual, media_50, media_200, crec_pct,
+                        potencial_val, tiene_target, ratio_rb, div_yield,
+                        rsi_valor, beta_valor, fuerza_volumen_ind
+                    )
+
                     alerta_vol = ""
                     if beta_valor is not None and beta_valor > 2.0:
                         alerta_vol = "⚠️ BETA ALTO"
-
-                    score = 0
-                    motivos = []
-
-                    if p_actual > media_200:
-                        score += 2; motivos.append("Tendencia alcista")
-                    if p_actual > media_50:
-                        score += 1; motivos.append("Momentum positivo")
-                    if crec_pct >= 20.0:
-                        score += 3; motivos.append("Crecimiento fuerte")
-                    elif crec_pct >= 10.0:
-                        score += 1; motivos.append("Crecimiento moderado")
-
-                    if tiene_target:
-                        if potencial_val >= 50:
-                            score += 2; motivos.append("Alto potencial")
-                        elif potencial_val >= 20:
-                            score += 1; motivos.append("Potencial moderado")
-                    else:
-                        if potencial_val >= 30:
-                            score += 2; motivos.append("Momentum técnico fuerte")
-                        elif potencial_val >= 15:
-                            score += 1; motivos.append("Momentum técnico moderado")
-
-                    if ratio_rb >= 2.0:
-                        score += 2; motivos.append("Excelente R:B")
-                    elif ratio_rb >= 1.0:
-                        score += 1; motivos.append("Buen R:B")
-                    if div_yield and div_yield > 0:
-                        score += 1; motivos.append("Con dividendo")
-
-                    if rsi_valor > 70:
-                        score -= 3; motivos.append(f"⚠️ RSI {rsi_valor:.0f} SOBRECOMPRA (-3)")
-                    elif rsi_valor > 65:
-                        score -= 1; motivos.append(f"⚡ RSI {rsi_valor:.0f} elevado (-1)")
-                    elif rsi_valor < 30:
-                        score += 1; motivos.append(f"RSI {rsi_valor:.0f} sobreventa (+1)")
-
-                    if beta_valor is not None and beta_valor > 2.5:
-                        score -= 1; motivos.append(f"Beta {beta_valor} muy alto (-1)")
-
-                    score = max(0, score)
+                    elif beta_valor is not None and beta_valor > 1.5:
+                        alerta_vol = "⚡ Volátil"
 
                     st.write("#### 📊 Evolución del Precio")
                     h['MA50'] = h['Close'].rolling(window=50).mean()
@@ -1215,10 +1213,19 @@ with pestaña2:
 
     st.write("---")
     st.write("### 📋 Análisis de Listas Pregrabadas")
-    lista_sel = st.selectbox("Universo:", ["Ninguna"] + list(st.session_state.listas_guardadas.keys()), key="select_lista")
+    opciones_lista2 = ["Ninguna", "🌍 TODAS LAS LISTAS"] + list(st.session_state.listas_guardadas.keys())
+    lista_sel = st.selectbox("Universo:", opciones_lista2, key="select_lista")
 
     if lista_sel != "Ninguna":
-        tickers_lista = st.session_state.listas_guardadas[lista_sel]
+        if lista_sel == "🌍 TODAS LAS LISTAS":
+            tickers_lista = []
+            for lista in st.session_state.listas_guardadas.values():
+                for t in lista:
+                    if t not in tickers_lista:
+                        tickers_lista.append(t)
+            st.info(f"🌍 Analizando {len(tickers_lista)} tickers de todas las listas")
+        else:
+            tickers_lista = st.session_state.listas_guardadas[lista_sel]
         if tickers_lista:
             with st.spinner("Analizando..."):
                 datos_globales_p2 = descargar_datos_seguro(tickers_lista, period="1y", actions=True)
@@ -1278,60 +1285,23 @@ with pestaña2:
 
                         sym = simbolo_moneda(moneda)
 
+                        # Volumen para listas
+                        volumen_actual = h['Volume'].iloc[-1]
+                        media_volumen_20 = h['Volume'].iloc[-21:-1].mean() if len(h) >= 21 else volumen_actual
+                        fuerza_volumen_lst = "🔥 ALTO" if volumen_actual > (media_volumen_20 * 1.15) else "🟢 NORMAL"
+
+                        # SCORING UNIFICADO (misma función exacta que el Bot)
+                        score, status, motivos = calcular_score_unificado(
+                            p_actual, p_media, p_media, crec_pct,
+                            potencial_val, tiene_target, ratio_rb, div_yield,
+                            rsi_valor, beta_valor, fuerza_volumen_lst
+                        )
+
                         alerta_vol = ""
                         if beta_valor is not None and beta_valor > 2.0:
                             alerta_vol = "⚠️ BETA ALTO"
                         elif beta_valor is not None and beta_valor > 1.5:
                             alerta_vol = "⚡ Volátil"
-
-                        score = 0
-                        motivos = []
-
-                        if p_actual > p_media:
-                            score += 1; motivos.append("Momentum")
-                        if crec_pct >= 20.0:
-                            score += 3; motivos.append("Crecimiento fuerte")
-                        elif crec_pct >= 10.0:
-                            score += 1; motivos.append("Crecimiento moderado")
-
-                        if tiene_target:
-                            if potencial_val >= 50:
-                                score += 2; motivos.append("Alto potencial")
-                            elif potencial_val >= 20:
-                                score += 1; motivos.append("Potencial moderado")
-                        else:
-                            if potencial_val >= 30:
-                                score += 2; motivos.append("Momentum técnico fuerte")
-                            elif potencial_val >= 15:
-                                score += 1; motivos.append("Momentum técnico moderado")
-
-                        if ratio_rb >= 2.0:
-                            score += 2; motivos.append("Excelente R:B")
-                        elif ratio_rb >= 1.0:
-                            score += 1; motivos.append("Buen R:B")
-                        if div_yield and div_yield > 0:
-                            score += 1; motivos.append("Dividendo")
-
-                        if rsi_valor > 70:
-                            score -= 3; motivos.append(f"RSI alto (-3)")
-                        elif rsi_valor > 65:
-                            score -= 1; motivos.append(f"RSI elevado (-1)")
-                        elif rsi_valor < 30:
-                            score += 1; motivos.append(f"RSI bajo (+1)")
-
-                        if beta_valor is not None and beta_valor > 2.5:
-                            score -= 1; motivos.append(f"Beta alto (-1)")
-
-                        score = max(0, score)
-
-                        if score >= 8:
-                            status = "🟢 COMPRAR"
-                        elif score >= 5:
-                            status = "🟡 ACUMULAR"
-                        elif score >= 3:
-                            status = "🟠 OBSERVAR"
-                        else:
-                            status = "🔴 ESPERAR"
 
                         datos_lista.append({
                             "Ticker": tick, "Status": status, "Score": score,
@@ -1360,6 +1330,12 @@ with pestaña2:
                     df_lista = pd.DataFrame(datos_lista)
                     df_lista = df_lista.sort_values(by="Score", ascending=False)
                     st.write(f"**{len(df_lista)} activos analizados**")
+
+                    # Destacar cuáles compraría el bot
+                    df_comprar = df_lista[df_lista["Status"] == "🟢 COMPRAR"]
+                    if not df_comprar.empty:
+                        st.success(f"🟢 El Bot compraría: {', '.join(df_comprar['Ticker'].tolist())}")
+
                     st.dataframe(df_lista, use_container_width=True)
                 else:
                     st.warning("No se pudieron analizar activos.")
@@ -1387,8 +1363,8 @@ with pestaña3:
                 if st.button(f"🗑️ Eliminar", key=f"btn_del_{nombre_lista}"):
                     if ticker_a_eliminar in st.session_state.listas_guardadas[nombre_lista]:
                         st.session_state.listas_guardadas[nombre_lista].remove(ticker_a_eliminar)
-                        st.success(f"🗑️ Eliminado {ticker_a_eliminar}")
                         guardar_listas(st.session_state.listas_guardadas)
+                        st.success(f"🗑️ Eliminado {ticker_a_eliminar}")
                         st.rerun()
 
             col_add, col_add_btn = st.columns([3, 1])
@@ -1398,8 +1374,8 @@ with pestaña3:
                 if st.button(f"➕ Añadir", key=f"btn_add_{nombre_lista}"):
                     if nuevo_ticker and nuevo_ticker.strip().upper() not in [t.upper() for t in st.session_state.listas_guardadas[nombre_lista]]:
                         st.session_state.listas_guardadas[nombre_lista].append(nuevo_ticker.strip().upper())
-                        st.success(f"➕ Añadido {nuevo_ticker.strip().upper()}")
                         guardar_listas(st.session_state.listas_guardadas)
+                        st.success(f"➕ Añadido {nuevo_ticker.strip().upper()}")
                         st.rerun()
                     else:
                         st.error("Vacío o duplicado")
@@ -1410,14 +1386,14 @@ with pestaña3:
                 nuevo_nombre = st.text_input(f"Renombrar:", value=nombre_lista, key=f"rename_{nombre_lista}")
                 if nuevo_nombre != nombre_lista and st.button(f"✅ Guardar", key=f"save_name_{nombre_lista}"):
                     st.session_state.listas_guardadas[nuevo_nombre] = st.session_state.listas_guardadas.pop(nombre_lista)
-                    st.success(f"Renombrada a '{nuevo_nombre}'")
                     guardar_listas(st.session_state.listas_guardadas)
+                    st.success(f"Renombrada a '{nuevo_nombre}'")
                     st.rerun()
             with col_del:
                 if st.button(f"🗑️ Eliminar lista", key=f"del_{nombre_lista}"):
                     del st.session_state.listas_guardadas[nombre_lista]
-                    st.success(f"Lista '{nombre_lista}' eliminada.")
                     guardar_listas(st.session_state.listas_guardadas)
+                    st.success(f"Lista '{nombre_lista}' eliminada.")
                     st.rerun()
 
     st.write("---")
@@ -1429,8 +1405,8 @@ with pestaña3:
         if nombre_nueva and tickers_nueva:
             tickers_limpios = [t.strip().upper() for t in tickers_nueva.replace("\n", ",").split(",") if t.strip()]
             st.session_state.listas_guardadas[nombre_nueva] = tickers_limpios
-            st.success(f"✅ Lista '{nombre_nueva}' guardada ({len(tickers_limpios)} tickers).")
             guardar_listas(st.session_state.listas_guardadas)
+            st.success(f"✅ Lista '{nombre_nueva}' guardada ({len(tickers_limpios)} tickers).")
             st.rerun()
         else:
             st.error("Completa nombre y tickers.")
@@ -1444,8 +1420,8 @@ with pestaña3:
             try:
                 listas_importadas = json.load(archivo_subido)
                 st.session_state.listas_guardadas.update(listas_importadas)
-                st.success("✅ Listas importadas.")
                 guardar_listas(st.session_state.listas_guardadas)
+                st.success("✅ Listas importadas.")
                 st.rerun()
             except Exception as e:
                 st.error(f"Error: {e}")
@@ -1460,4 +1436,4 @@ with pestaña3:
         )
 
 st.write("---")
-st.caption("Centro de Mando Financiero Pro v3.0 | RSI + Beta + Target N/A fix | Streamlit + yFinance")
+st.caption("Centro de Mando Financiero Pro v4.0 | Scoring Unificado + Persistencia | Streamlit + yFinance")
