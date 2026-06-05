@@ -640,13 +640,15 @@ with pestaña1:
 
                     if precio_actual <= media_200:
                         continue
-                    if precio_actual < (media_30 * 0.98):
+                    # FILTRO RELAJADO: De 0.98 a 0.95 (permite comprar 5% por debajo de MA30)
+                    if precio_actual < (media_30 * 0.95):
                         continue
 
                     precio_hace_60d = historial['Close'].iloc[-60]
                     crecimiento_precio = ((precio_actual - precio_hace_60d) / precio_hace_60d) * 100
                     crecimiento_porcentaje = max(22.5, round(crecimiento_precio, 1))
-                    if crecimiento_porcentaje < 20.0:
+                    # FILTRO RELAJADO: De 20% a 5% para permitir compras en correcciones
+                    if crecimiento_porcentaje < 5.0:
                         continue
 
                     target_estimado, div_yield, moneda_detectada, pct_inst, num_inst, market_cap, sector = obtener_info_segura(tick)
@@ -937,6 +939,29 @@ with pestaña1:
     if alerta_cupo:
         st.warning(f"⚠️ Cupo máximo de {max_activos_cartera} acciones alcanzado.")
 
+    # === DEBUG DE CARTERA ===
+    st.write("---")
+    with st.expander("🔧 Debug de Cartera (click para ver)"):
+        st.write(f"**Archivo CSV:** `{ARCHIVO_CARTERA}`")
+        st.write(f"**Existe archivo:** {os.path.exists(ARCHIVO_CARTERA)}")
+        if os.path.exists(ARCHIVO_CARTERA):
+            import os as os2
+            st.write(f"**Tamaño archivo:** {os2.path.getsize(ARCHIVO_CARTERA)} bytes")
+            try:
+                df_test = pd.read_csv(ARCHIVO_CARTERA)
+                st.write(f"**Filas en CSV:** {len(df_test)}")
+                st.write(f"**Columnas:** {list(df_test.columns)}")
+                if not df_test.empty:
+                    st.write("**Primeras filas:**")
+                    st.dataframe(df_test.head(3))
+            except Exception as e:
+                st.error(f"Error leyendo CSV: {e}")
+        st.write(f"**Session state cartera vacía:** {st.session_state.cartera_compras.empty if 'cartera_compras' in st.session_state else 'No existe'}")
+        if 'cartera_compras' in st.session_state and not st.session_state.cartera_compras.empty:
+            st.write(f"**Posiciones en session_state:** {len(st.session_state.cartera_compras)}")
+            st.write(f"**Tickers:** {st.session_state.cartera_compras['Ticker'].tolist()}")
+
+    st.write("---")
     st.write("### 📊 Cartera a 4 Años")
     if not df_mostrar.empty:
         st.dataframe(df_final_ui, use_container_width=True)
