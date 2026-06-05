@@ -102,6 +102,27 @@ TICKER_ALIASES = {
 # FUNCIONES AUXILIARES
 # ============================================================================
 
+
+REGISTRO_FILE = "registro_semanal.json"
+
+def cargar_registro():
+    """Carga el registro semanal desde archivo JSON si existe"""
+    if os.path.exists(REGISTRO_FILE):
+        try:
+            with open(REGISTRO_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+def guardar_registro(registro):
+    """Guarda el registro semanal en archivo JSON"""
+    try:
+        with open(REGISTRO_FILE, 'w') as f:
+            json.dump(registro, f, indent=2)
+    except Exception as e:
+        st.error(f"Error guardando registro: {e}")
+
 def detectar_moneda(ticker):
     ticker_upper = ticker.upper().strip()
     sufijos_eur = ['.AS', '.PA', '.DE', '.BR', '.MI', '.MC', '.ST', '.HE', '.CO', '.OL', '.VI', '.LS', '.IR']
@@ -447,6 +468,7 @@ def registrar_compra(ticker, costo=1000):
     datos["tickers_comprados"].append(ticker)
     guardar_registro(st.session_state.registro_semanal)
 
+
 # ============================================================================
 # MENU DE PESTANAS
 # ============================================================================
@@ -512,8 +534,7 @@ with pestaña1:
             # BORRAR ARCHIVOS DE DISCO
             if os.path.exists(CARTERA_FILE):
                 os.remove(CARTERA_FILE)
-            if os.path.exists(REGISTRO_FILE):
-                os.remove(REGISTRO_FILE)
+
             st.success("¡Cartera y registro reseteados!")
             time.sleep(1)
             st.rerun()
