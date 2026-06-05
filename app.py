@@ -7,6 +7,52 @@ import json
 import time
 import numpy as np
 
+import os
+
+# ============================================================================
+# PERSISTENCIA DE CARTERA
+# ============================================================================
+CARTERA_FILE = "cartera_guardada.json"
+LISTAS_FILE = "listas_guardadas.json"
+
+def cargar_cartera():
+    """Carga la cartera desde archivo JSON si existe"""
+    if os.path.exists(CARTERA_FILE):
+        try:
+            with open(CARTERA_FILE, 'r') as f:
+                data = json.load(f)
+            if data and len(data) > 0:
+                return pd.DataFrame(data)
+        except:
+            pass
+    return pd.DataFrame()
+
+def guardar_cartera(df):
+    """Guarda la cartera en archivo JSON"""
+    try:
+        df.to_json(CARTERA_FILE, orient='records', date_format='iso')
+    except Exception as e:
+        st.error(f"Error guardando cartera: {e}")
+
+def cargar_listas():
+    """Carga las listas personalizadas desde archivo JSON si existe"""
+    if os.path.exists(LISTAS_FILE):
+        try:
+            with open(LISTAS_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return None
+
+def guardar_listas(listas):
+    """Guarda las listas en archivo JSON"""
+    try:
+        with open(LISTAS_FILE, 'w') as f:
+            json.dump(listas, f, indent=2)
+    except Exception as e:
+        st.error(f"Error guardando listas: {e}")
+
+
 # ============================================================================
 # CONFIGURACION INICIAL
 # ============================================================================
@@ -337,10 +383,14 @@ def analizar_cartera_global(df):
 # ============================================================================
 
 if "listas_guardadas" not in st.session_state:
-    st.session_state.listas_guardadas = LISTAS_DEFINITIVAS.copy()
+    listas_persistidas = cargar_listas()
+    if listas_persistidas:
+        st.session_state.listas_guardadas = listas_persistidas
+    else:
+        st.session_state.listas_guardadas = LISTAS_DEFINITIVAS.copy()
 
 if "cartera_compras" not in st.session_state:
-    st.session_state.cartera_compras = pd.DataFrame()
+    st.session_state.cartera_compras = cargar_cartera()
 
 PARAMS_DEFAULT = {
     "capital_total": 30000,
@@ -360,7 +410,7 @@ else:
             st.session_state.params_bot[key] = val
 
 if "registro_semanal" not in st.session_state:
-    st.session_state.registro_semanal = {}
+    st.session_state.registro_semanal = cargar_registro()
 
 semana_actual = datetime.now().strftime("%Y-W%U")
 if semana_actual not in st.session_state.registro_semanal:
@@ -395,6 +445,7 @@ def registrar_compra(ticker, costo=1000):
     datos["compras_realizadas"] += 1
     datos["gastado"] += costo
     datos["tickers_comprados"].append(ticker)
+    guardar_registro(st.session_state.registro_semanal)
 
 # ============================================================================
 # MENU DE PESTANAS
@@ -458,6 +509,11 @@ with pestaña1:
             st.session_state.cartera_compras = pd.DataFrame()
             st.session_state.registro_semanal = {}
             st.cache_data.clear()
+            # BORRAR ARCHIVOS DE DISCO
+            if os.path.exists(CARTERA_FILE):
+                os.remove(CARTERA_FILE)
+            if os.path.exists(REGISTRO_FILE):
+                os.remove(REGISTRO_FILE)
             st.success("¡Cartera y registro reseteados!")
             time.sleep(1)
             st.rerun()
@@ -468,6 +524,7 @@ with pestaña1:
                 st.session_state.cartera_compras = st.session_state.cartera_compras.drop_duplicates(
                     subset=['Ticker'], keep='last'
                 ).reset_index(drop=True)
+                guardar_cartera(st.session_state.cartera_compras)
                 st.success(f"Eliminados {antes - len(st.session_state.cartera_compras)} duplicados.")
                 st.rerun()
     with col_btn4:
@@ -487,6 +544,7 @@ with pestaña1:
                 df_import = pd.read_csv(archivo_cartera)
                 if not df_import.empty:
                     st.session_state.cartera_compras = df_import
+                    guardar_cartera(st.session_state.cartera_compras)
                     st.success(f"✅ Cartera importada: {len(df_import)} posiciones")
                     st.rerun()
             except Exception as e:
@@ -865,6 +923,8 @@ with pestaña1:
                             [st.session_state.cartera_compras, df_nuevas], 
                             ignore_index=True
                         )
+                    # GUARDAR EN DISCO
+                    guardar_cartera(st.session_state.cartera_compras)
 
                     if posiciones_sustituidas:
                         for viejo, nuevo in posiciones_sustituidas:
@@ -1307,6 +1367,7 @@ with pestaña3:
                     if ticker_a_eliminar in st.session_state.listas_guardadas[nombre_lista]:
                         st.session_state.listas_guardadas[nombre_lista].remove(ticker_a_eliminar)
                         st.success(f"🗑️ Eliminado {ticker_a_eliminar}")
+                        guardar_listas(st.session_state.listas_guardadas)
                         st.rerun()
 
             col_add, col_add_btn = st.columns([3, 1])
@@ -1317,6 +1378,7 @@ with pestaña3:
                     if nuevo_ticker and nuevo_ticker.strip().upper() not in [t.upper() for t in st.session_state.listas_guardadas[nombre_lista]]:
                         st.session_state.listas_guardadas[nombre_lista].append(nuevo_ticker.strip().upper())
                         st.success(f"➕ Añadido {nuevo_ticker.strip().upper()}")
+                        guardar_listas(st.session_state.listas_guardadas)
                         st.rerun()
                     else:
                         st.error("Vacío o duplicado")
@@ -1328,11 +1390,13 @@ with pestaña3:
                 if nuevo_nombre != nombre_lista and st.button(f"✅ Guardar", key=f"save_name_{nombre_lista}"):
                     st.session_state.listas_guardadas[nuevo_nombre] = st.session_state.listas_guardadas.pop(nombre_lista)
                     st.success(f"Renombrada a '{nuevo_nombre}'")
+                    guardar_listas(st.session_state.listas_guardadas)
                     st.rerun()
             with col_del:
                 if st.button(f"🗑️ Eliminar lista", key=f"del_{nombre_lista}"):
                     del st.session_state.listas_guardadas[nombre_lista]
                     st.success(f"Lista '{nombre_lista}' eliminada.")
+                    guardar_listas(st.session_state.listas_guardadas)
                     st.rerun()
 
     st.write("---")
@@ -1345,6 +1409,7 @@ with pestaña3:
             tickers_limpios = [t.strip().upper() for t in tickers_nueva.replace("\n", ",").split(",") if t.strip()]
             st.session_state.listas_guardadas[nombre_nueva] = tickers_limpios
             st.success(f"✅ Lista '{nombre_nueva}' guardada ({len(tickers_limpios)} tickers).")
+            guardar_listas(st.session_state.listas_guardadas)
             st.rerun()
         else:
             st.error("Completa nombre y tickers.")
@@ -1359,6 +1424,7 @@ with pestaña3:
                 listas_importadas = json.load(archivo_subido)
                 st.session_state.listas_guardadas.update(listas_importadas)
                 st.success("✅ Listas importadas.")
+                guardar_listas(st.session_state.listas_guardadas)
                 st.rerun()
             except Exception as e:
                 st.error(f"Error: {e}")
