@@ -102,6 +102,28 @@ def obtener_info_segura(ticker):
         num_inst = info.get('numberOfInstitutionalHolders', None)
         market_cap = info.get('marketCap', None)
         sector = info.get('sector', None)
+
+        # Fallback: si no hay market_cap, intentar calcularlo desde precio * shares
+        if market_cap is None and 'sharesOutstanding' in info and 'previousClose' in info:
+            try:
+                shares = info.get('sharesOutstanding', 0)
+                price = info.get('previousClose', 0)
+                if shares and price:
+                    market_cap = shares * price
+            except:
+                pass
+
+        # Fallback: si no hay pct_inst, usar market_cap como proxy
+        if pct_inst is None and market_cap is not None:
+            if market_cap > 50e9:  # Mega-cap = probablemente institucional
+                pct_inst = 0.65
+            elif market_cap > 10e9:  # Large-cap
+                pct_inst = 0.55
+            elif market_cap > 2e9:  # Mid-cap
+                pct_inst = 0.45
+            else:  # Small-cap
+                pct_inst = 0.35
+
         if dy is not None:
             if dy > 1.0:
                 dy = dy / 100.0
@@ -408,13 +430,16 @@ if not st.session_state.listas_guardadas:
     st.session_state.listas_guardadas = LISTAS_DEFINITIVAS.copy()
 
 # ============================================================================
-# INICIALIZACION DE CARTERA - VERSIÓN ROBUSTA
-# Streamlit reinicia el script en cada interacción. La cartera se guarda en
-# archivo CSV y DEBE recargarse en cada ejecución para ser persistente.
+# INICIALIZACION DE CARTERA - STREAMLIT CLOUD
+# Streamlit Cloud tiene filesystem efímero (se borra al reiniciar).
+# La cartera se guarda en session_state (persiste durante la sesión)
+# y se puede exportar/importar manualmente via CSV.
 # ============================================================================
 
-# SIEMPRE intentar cargar desde archivo primero (fuente de verdad)
-cartera_cargada = pd.DataFrame()
+if "cartera_compras" not in st.session_state:
+    st.session_state.cartera_compras = pd.DataFrame()
+
+# Intentar cargar desde archivo CSV si existe (para compatibilidad local)
 if os.path.exists(ARCHIVO_CARTERA):
     try:
         df_leida = pd.read_csv(ARCHIVO_CARTERA)
@@ -422,21 +447,14 @@ if os.path.exists(ARCHIVO_CARTERA):
             if 'Moneda' not in df_leida.columns:
                 df_leida['Moneda'] = 'USD'
             df_leida = regenerar_textos_moneda(df_leida)
-            cartera_cargada = df_leida
+            st.session_state.cartera_compras = df_leida
+            st.toast(f"💾 Cartera cargada desde archivo: {len(df_leida)} posiciones")
     except Exception as e:
-        st.error(f"⚠️ Error cargando cartera: {e}")
+        pass
 
-# Asignar a session_state (sobrescribe lo que haya, priorizando el archivo)
-st.session_state.cartera_compras = cartera_cargada
-
-# Debug: mostrar estado de carga
-if not cartera_cargada.empty:
-    st.toast(f"💾 Cartera cargada: {len(cartera_cargada)} posiciones desde archivo")
-else:
-    if os.path.exists(ARCHIVO_CARTERA):
-        st.toast("📂 Archivo de cartera existe pero está vacío")
-    else:
-        st.toast("📂 No hay archivo de cartera guardado")
+# Asegurar que es DataFrame
+if not isinstance(st.session_state.cartera_compras, pd.DataFrame):
+    st.session_state.cartera_compras = pd.DataFrame()
 
 if "params_bot" not in st.session_state:
     st.session_state.params_bot = {
@@ -558,7 +576,7 @@ with pestaña1:
         )
         st.session_state.params_bot["max_activos_cartera"] = max_activos_cartera
 
-    col_btn1, col_btn2, col_btn3, col_btn4 = st.columns([3, 1, 1, 1])
+    col_btn1, col_btn2, col_btn3, col_btn4, col_btn5, col_btn6 = st.columns([2, 1, 1, 1, 1, 1])
     with col_btn1:
         ejecutar_bot = st.button("🔄 Ejecutar Bot")
     with col_btn2:
@@ -594,6 +612,35 @@ with pestaña1:
                 guardar_cartera()
                 st.success("✅ Monedas actualizadas.")
                 st.rerun()
+
+    # === EXPORTAR/IMPORTAR CARTERA (Streamlit Cloud) ===
+    with col_btn5:
+        if not st.session_state.cartera_compras.empty:
+            csv_cartera = st.session_state.cartera_compras.to_csv(index=False)
+            st.download_button(
+                label="📥 Exportar",
+                data=csv_cartera,
+                file_name="cartera_guardada.csv",
+                mime="text/csv",
+                key="export_cartera"
+            )
+        else:
+            st.button("📥 Exportar", disabled=True, key="export_cartera_disabled")
+
+    with col_btn6:
+        archivo_cartera = st.file_uploader("📤 Importar", type=["csv"], key="import_cartera", label_visibility="collapsed")
+        if archivo_cartera is not None:
+            try:
+                df_import = pd.read_csv(archivo_cartera)
+                if not df_import.empty:
+                    if 'Moneda' not in df_import.columns:
+                        df_import['Moneda'] = 'USD'
+                    df_import = regenerar_textos_moneda(df_import)
+                    st.session_state.cartera_compras = df_import
+                    st.success(f"✅ Cartera importada: {len(df_import)} posiciones")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error importando: {e}")
 
     # ============================================================================
     # EJECUCION DEL BOT
@@ -690,6 +737,16 @@ with pestaña1:
 
                     fuerza_volumen = "🔥 ALTO" if volumen_actual > (media_volumen_20 * 1.15) else "🟢 NORMAL"
                     tendencia_vol, _ = calcular_tendencia_volumen(historial)
+                    # Fallback: si no hay datos institucionales, usar market_cap como proxy
+                    if pct_inst is None and market_cap is not None:
+                        if market_cap > 50e9:
+                            pct_inst = 0.65
+                        elif market_cap > 10e9:
+                            pct_inst = 0.55
+                        elif market_cap > 2e9:
+                            pct_inst = 0.45
+                        else:
+                            pct_inst = 0.35
                     interes_inst = calcular_interes_institucional(fuerza_volumen, pct_inst, tendencia_vol, market_cap)
 
                     # RSI y distancia a maximo 52s
@@ -944,22 +1001,11 @@ with pestaña1:
     with st.expander("🔧 Debug de Cartera (click para ver)"):
         st.write(f"**Archivo CSV:** `{ARCHIVO_CARTERA}`")
         st.write(f"**Existe archivo:** {os.path.exists(ARCHIVO_CARTERA)}")
-        if os.path.exists(ARCHIVO_CARTERA):
-            import os as os2
-            st.write(f"**Tamaño archivo:** {os2.path.getsize(ARCHIVO_CARTERA)} bytes")
-            try:
-                df_test = pd.read_csv(ARCHIVO_CARTERA)
-                st.write(f"**Filas en CSV:** {len(df_test)}")
-                st.write(f"**Columnas:** {list(df_test.columns)}")
-                if not df_test.empty:
-                    st.write("**Primeras filas:**")
-                    st.dataframe(df_test.head(3))
-            except Exception as e:
-                st.error(f"Error leyendo CSV: {e}")
         st.write(f"**Session state cartera vacía:** {st.session_state.cartera_compras.empty if 'cartera_compras' in st.session_state else 'No existe'}")
         if 'cartera_compras' in st.session_state and not st.session_state.cartera_compras.empty:
             st.write(f"**Posiciones en session_state:** {len(st.session_state.cartera_compras)}")
             st.write(f"**Tickers:** {st.session_state.cartera_compras['Ticker'].tolist()}")
+        st.info("💡 **En Streamlit Cloud:** Usa 'Exportar' para descargar CSV y 'Importar' para recuperar cartera tras reinicio.")
 
     st.write("---")
     st.write("### 📊 Cartera a 4 Años")
@@ -1122,11 +1168,11 @@ with pestaña2:
 
                     col_sem1, col_sem2, col_sem3 = st.columns([1, 2, 1])
                     with col_sem2:
-                        if puntos_semaforo >= 5:
+                        if puntos_semaforo >= 4:
                             st.success("## 🟢 COMPRA FUERTE")
                             st.write(f"**Puntuación: {puntos_semaforo:.1f}/6**")
                             st.write("Esta acción cumple la mayoría de criterios favorables.")
-                        elif puntos_semaforo >= 3:
+                        elif puntos_semaforo >= 2:
                             st.warning("## 🟡 COMPRA MODERADA")
                             st.write(f"**Puntuación: {puntos_semaforo:.1f}/6**")
                             st.write("Hay aspectos positivos pero también riesgos a considerar.")
@@ -1250,18 +1296,19 @@ with pestaña2:
                         pct_inst_txt = f"{pct_inst*100:.1f}%" if pct_inst else "N/A"
                         mcap_txt = formatear_market_cap(market_cap)
 
-                        # Calcular semaforo para lista
+                        # Calcular semaforo para lista - CRITERIOS RELAJADOS
+                        # El mercado actual tiene muchos activos en consolidación
                         puntos_sem = 0
                         if p_actual > p_media_50: puntos_sem += 1
                         if p_actual > h['Close'].iloc[-200:].mean(): puntos_sem += 1
                         if potencial_val > 50: puntos_sem += 1
-                        if ratio_rb > 2: puntos_sem += 1
-                        if volumen_hf == "🔥 ALTO": puntos_sem += 1
-                        if "FUERTE" in interes_inst or "MODERADO" in interes_inst: puntos_sem += 1
+                        if ratio_rb > 1.5: puntos_sem += 1  # Relajado de 2.0 a 1.5
+                        if volumen_hf == "🔥 ALTO" or volumen_hf == "🟢 NORMAL": puntos_sem += 0.5  # Cualquier volumen aceptable
+                        if "FUERTE" in interes_inst or "MODERADO" in interes_inst or "DÉBIL" in interes_inst: puntos_sem += 0.5  # Cualquier interés cuenta
 
-                        if puntos_sem >= 5:
+                        if puntos_sem >= 4:  # Relajado de 5 a 4
                             semaforo = "🟢"
-                        elif puntos_sem >= 3:
+                        elif puntos_sem >= 2:  # Relajado de 3 a 2
                             semaforo = "🟡"
                         else:
                             semaforo = "🔴"
