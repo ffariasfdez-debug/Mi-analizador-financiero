@@ -1183,7 +1183,7 @@ with pestaña1:
                 "Crecimiento Anualizado", "Upside Analista", "Revenue Growth", 
                 "Potencial Compuesto", "Confianza Dato", "Alertas Caida", "Score",
                 "RSI", "Beta", "Alerta Volatilidad", "Volumen H.F.", 
-                "Interes Inst.", "Market Cap",
+                "Dividendo", "Interes Inst.", "Market Cap",
                 "📝 Veredicto", "Estado Candado", "Capital Invertido", "Fecha Compra"]
         cols_existentes = [c for c in cols if c in df_mostrar.columns]
         st.dataframe(df_mostrar[cols_existentes], use_container_width=True)
