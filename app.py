@@ -103,7 +103,10 @@ LISTAS_DEFINITIVAS = {
     ]
 }
 
-# MEJORA 1: Eliminado alias ABJ -> ABB (ABJ no es ticker estandar)
+# TICKER_ALIASES: Mapeo de tickers alternativos a tickers principales
+# ABJ es ABB en Frankfurt (Xetra), pero tus listas ya usan ABB directamente
+# Si necesitas mapear tickers de otros mercados, añadelos aqui:
+# Ejemplo: {"ABJ.DE": "ABB", "ABBNY": "ABB"}
 TICKER_ALIASES = {}
 
 # ============================================================================
@@ -191,12 +194,27 @@ def estimar_beta_desde_volatilidad(historial):
 # ============================================================================
 
 def calcular_metricas_limpias(historial, precio_actual, ticker):
-    """Calcula metricas limpias. Devuelve: (crecimiento_anualizado, upside_analista, revenue_growth)"""
+    """
+    Calcula metricas limpias con validacion anti-anomalias.
+    Devuelve: (crecimiento_anualizado, upside_analista, revenue_growth)
+
+    MEJORAS v6.2:
+    - Validacion de splits/gaps: si el crecimiento 60d es >100% o <-80%, 
+      usar media 20d como referencia para evitar datos anomalos
+    - Revenue Growth como tercer pilar fundamental
+    """
     try:
         precio_60d = historial["Close"].iloc[-60] if len(historial) >= 60 else historial["Close"].iloc[0]
         if precio_60d > 0 and precio_actual > 0:
             crec_anual = ((precio_actual / precio_60d) ** (252/60) - 1) * 100
             crec_anual = round(crec_anual, 1)
+
+            # VALIDACION ANTI-SPLIT/GAP: si el crecimiento es anomalo, usar media 20d
+            if abs(crec_anual) > 100 or crec_anual < -80:
+                precio_media_20d = historial["Close"].iloc[-20:].mean()
+                if precio_media_20d > 0:
+                    crec_anual = ((precio_actual / precio_media_20d) ** (252/20) - 1) * 100
+                    crec_anual = round(crec_anual, 1)
         else:
             crec_anual = 0.0
     except:
@@ -505,31 +523,60 @@ def calcular_score_y_status(crec_anual, upside_anal, revenue_growth, rsi_valor, 
 
 @st.cache_data(ttl=300)
 def obtener_info_segura(ticker):
+    """
+    Extrae informacion fundamental del ticker de forma segura.
+    MEJORAS v6.2:
+    - Extrae revenueGrowth con multiples fallbacks (revenueGrowth, earningsGrowth, etc.)
+    - Añade validacion de datos corruptos
+    """
     try:
         ticker_real = TICKER_ALIASES.get(ticker.upper(), ticker)
         t = yf.Ticker(ticker_real)
         info = t.info
         if not info or len(info) < 5:
             return None, None, detectar_moneda(ticker), None, None, None, None, None
+
         target = info.get("targetMedianPrice", None)
         dy = info.get("dividendYield", None)
         moneda = info.get("currency", detectar_moneda(ticker))
         pct_inst = info.get("heldPercentInstitutions", None)
         market_cap = info.get("marketCap", None)
         sector = info.get("sector", None)
+
+        # Beta con multiples fallbacks
         beta_info = info.get("beta", None)
         if beta_info is None:
             beta_info = info.get("beta3Year", None)
         if beta_info is None:
             beta_info = info.get("beta5Year", None)
+
+        # Revenue Growth con multiples fallbacks
         revenue_growth = info.get("revenueGrowth", None)
+        if revenue_growth is None or np.isnan(revenue_growth):
+            revenue_growth = info.get("earningsGrowth", None)
+        if revenue_growth is None or np.isnan(revenue_growth):
+            # Calcular aproximacion desde revenue actual vs anterior
+            try:
+                financials = t.financials
+                if financials is not None and not financials.empty:
+                    rev_row = financials.loc["Total Revenue"] if "Total Revenue" in financials.index else None
+                    if rev_row is not None and len(rev_row) >= 2:
+                        rev_actual = rev_row.iloc[0]
+                        rev_anterior = rev_row.iloc[1]
+                        if rev_anterior and rev_anterior != 0:
+                            revenue_growth = (rev_actual - rev_anterior) / abs(rev_anterior)
+            except:
+                pass
+
+        # Normalizar dividend yield
         if dy is not None:
             if dy > 1.0:
                 dy = dy / 100.0
             if dy > 0.10:
                 dy = 0.0
+
         return target, dy, moneda, pct_inst, market_cap, sector, beta_info, revenue_growth
-    except:
+    except Exception as e:
         return None, None, detectar_moneda(ticker), None, None, None, None, None
 
 def descargar_datos_seguro(tickers, period="1y", interval=None, actions=False):
@@ -724,7 +771,7 @@ def analizar_cartera_global(df):
         candado = str(fila.get("Candado", ""))
         dias = calcular_dias_candado(candado)
         if 0 < dias <= 14:
-            candados_proximos.append(f"{fila["Ticker"]} ({dias}d)")
+            candados_proximos.append(f"{fila['Ticker']} ({dias}d)")
     if candados_proximos:
         recomendaciones.append(f"🔓 **Candados proximos:** {', '.join(candados_proximos)}")
     sectores = set()
@@ -837,9 +884,9 @@ def puede_comprar_esta_semana(cantidad=1, costo=1000):
     tope = st.session_state.params_bot["tope_semanal"]
     max_compras = st.session_state.params_bot["max_compras_semanal"]
     if datos["gastado"] + costo > tope:
-        return False, f"Tope semanal: {datos["gastado"]:.0f}/{tope}"
+        return False, f"Tope semanal: {datos['gastado']:.0f}/{tope}"
     if datos["compras_realizadas"] + cantidad > max_compras:
-        return False, f"Max {max_compras} compras: {datos["compras_realizadas"]}/{max_compras}"
+        return False, f"Max {max_compras} compras: {datos['compras_realizadas']}/{max_compras}"
     return True, "OK"
 
 def registrar_compra(ticker, costo=1000):
@@ -1010,7 +1057,7 @@ with pestaña1:
     c2.metric("Invertido", f"{total_invertido:,.2f}")
     c3.metric("Caja Libre", f"{caja_libre:,.2f}")
     c4.metric("Semanal", f"{gastado_semana:,.0f}/{tope_semanal:,.0f}")
-    c5.metric("Compras Sem", f"{get_registro_semana_actual()["compras_realizadas"]}/{max_compras_sem}")
+    c5.metric("Compras Sem", f"{get_registro_semana_actual()['compras_realizadas']}/{max_compras_sem}")
 
     if alerta_cupo:
         st.warning(f"⚠️ Cupo maximo {max_activos} alcanzado.")
@@ -1040,17 +1087,17 @@ with pestaña1:
 
         col_info1, col_info2 = st.columns(2)
         with col_info1:
-            st.error(f"🗑️ VENDER: **{prop["vender"]}**")
-            st.write(f"Score actual: {prop["score_viejo"]:.0f}/10")
+            st.error(f"🗑️ VENDER: **{prop['vender']}**")
+            st.write(f"Score actual: {prop['score_viejo']:.0f}/10")
         with col_info2:
-            st.success(f"💰 COMPRAR: **{prop["comprar"]}**")
-            st.write(f"Score: {prop["score_nuevo"]}/10")
-            st.write(f"Upside Analista: {prop["upside_nuevo"]}")
-            st.write(f"Precio: {prop["precio_nuevo"]:.2f} {prop["moneda_nuevo"]}")
+            st.success(f"💰 COMPRAR: **{prop['comprar']}**")
+            st.write(f"Score: {prop['score_nuevo']}/10")
+            st.write(f"Upside Analista: {prop['upside_nuevo']}")
+            st.write(f"Precio: {prop['precio_nuevo']:.2f} {prop['moneda_nuevo']}")
 
         st.write("**Motivos de la propuesta:**")
-        st.write(f"• La nueva oportunidad tiene un Score {prop["score_nuevo"]/prop["score_viejo"]:.1f}x mejor")
-        st.write(f"• El activo actual ({prop["vender"]}) tiene el candado liberado")
+        st.write(f"• La nueva oportunidad tiene un Score {prop['score_nuevo']/prop['score_viejo']:.1f}x mejor")
+        st.write(f"• El activo actual ({prop['vender']}) tiene el candado liberado")
 
         col_ok, col_ko = st.columns(2)
         with col_ok:
@@ -1073,8 +1120,8 @@ with pestaña1:
                     "Ticker": prop["comprar"],
                     "Acciones": cantidad,
                     "Precio Entrada Base": precio,
-                    "Precio Entrada": f"{precio:.2f} {prop["moneda_nuevo"]}",
-                    "Crecimiento Anualizado": f"{fila["Crecimiento Anualizado"]:.1f}%",
+                    "Precio Entrada": f"{precio:.2f} {prop['moneda_nuevo']}",
+                    "Crecimiento Anualizado": f"{fila['Crecimiento Anualizado']:.1f}%",
                     "Upside Analista": fila["Upside Analista"],
                     "Revenue Growth": fila["Revenue Growth"],
                     "Potencial Compuesto": fila["Potencial Compuesto"],
@@ -1087,10 +1134,10 @@ with pestaña1:
                     "Volumen H.F.": fila["Volumen H.F."],
                     "Dividendo": formatear_dividendo(fila["Dividendo"]),
                     "Interes Inst.": "🎯 FUERTE" if fila["Pct Institucional"] and fila["Pct Institucional"] > 0.5 else "🎯 MODERADO" if fila["Pct Institucional"] else "🎯 DEBIL",
-                    "Pct Institucional": f"{fila["Pct Institucional"]*100:.1f}%" if fila["Pct Institucional"] else "N/A",
+                    "Pct Institucional": f"{fila['Pct Institucional']*100:.1f}%" if fila['Pct Institucional'] else "N/A",
                     "Market Cap": formatear_market_cap(fila["Market Cap"]),
                     "Capital Invertido Base": max_por_accion,
-                    "Capital Invertido": f"{max_por_accion:.2f} {prop["moneda_nuevo"]}",
+                    "Capital Invertido": f"{max_por_accion:.2f} {prop['moneda_nuevo']}",
                     "Fecha Compra": fecha_compra,
                     "Candado": f"🔒 {fecha_liberacion}",
                     "Moneda": fila["Moneda"]
@@ -1102,7 +1149,7 @@ with pestaña1:
                 registrar_compra(prop["comprar"], max_por_accion)
 
                 st.session_state.propuesta_sustitucion = None
-                st.success(f"✅ Sustitucion ejecutada: {prop["vender"]} → {prop["comprar"]}")
+                st.success(f"✅ Sustitucion ejecutada: {prop['vender']} → {prop['comprar']}")
                 st.rerun()
 
         with col_ko:
@@ -1491,7 +1538,5 @@ with pestaña3:
         )
 
 st.write("---")
-st.caption("Centro de Mando Financiero Pro v6.1 | Motor de Analisis Limpio + Contexto de Caida | Streamlit + yFinance")
-
-
+st.caption("Centro de Mando Financiero Pro v6.2 | Motor de Analisis Limpio + Contexto de Caida + Revenue Growth | Streamlit + yFinance")
 
