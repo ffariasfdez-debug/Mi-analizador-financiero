@@ -9,28 +9,95 @@ import numpy as np
 import os
 
 # ============================================================================
-# PERSISTENCIA DE CARTERA
+# PERSISTENCIA DE CARTERA - ANTI-REINICIO
 # ============================================================================
+# PROBLEMA: Streamlit pierde session_state al cerrar navegador/apagar PC.
+# SOLUCION: Guardar en disco SIEMPRE. Cargar desde disco SIEMPRE.
+# ADEMAS: Backup simple (.bak) por si el principal se corrompe.
+
 CARTERA_FILE = "cartera_guardada.json"
+CARTERA_BACKUP = "cartera_guardada.json.bak"
 LISTAS_FILE = "listas_guardadas.json"
 REGISTRO_FILE = "registro_semanal.json"
 
+def _cartera_a_json(df):
+    """Convierte DataFrame a JSON string robusto."""
+    try:
+        return df.to_json(orient="records", date_format="iso")
+    except Exception as e:
+        st.error(f"Error serializando cartera: {e}")
+        return None
+
+def _guardar_con_backup(df):
+    """Guarda cartera principal + copia .bak atomica."""
+    json_str = _cartera_a_json(df)
+    if json_str is None:
+        return False
+    try:
+        # Guardar backup primero (si principal existe)
+        if os.path.exists(CARTERA_FILE):
+            with open(CARTERA_FILE, "r") as f_orig:
+                contenido_actual = f_orig.read()
+            with open(CARTERA_BACKUP, "w") as f_bak:
+                f_bak.write(contenido_actual)
+        # Guardar nuevo principal
+        with open(CARTERA_FILE, "w") as f:
+            f.write(json_str)
+        return True
+    except Exception as e:
+        st.error(f"Error guardando en disco: {e}")
+        return False
+
+def _recuperar_desde_backup():
+    """Si el principal falla, intenta el .bak"""
+    if os.path.exists(CARTERA_BACKUP):
+        try:
+            with open(CARTERA_BACKUP, "r") as f:
+                data = json.load(f)
+            if data and len(data) > 0:
+                df = pd.DataFrame(data)
+                # Restaurar principal desde backup
+                try:
+                    with open(CARTERA_FILE, "w") as f_out:
+                        json.dump(data, f_out)
+                except:
+                    pass
+                return df
+        except:
+            pass
+    return None
+
 def cargar_cartera():
+    """
+    Carga cartera desde disco. Siempre. Nunca devuelve vacio sin intentar.
+    Orden: 1) Principal, 2) Backup .bak, 3) Vacio.
+    """
+    # 1. Archivo principal
     if os.path.exists(CARTERA_FILE):
         try:
             with open(CARTERA_FILE, "r") as f:
                 data = json.load(f)
             if data and len(data) > 0:
                 return pd.DataFrame(data)
-        except:
-            pass
+        except Exception as e:
+            st.warning(f"⚠️ Archivo principal corrupto: {e}")
+
+    # 2. Backup .bak
+    df_bak = _recuperar_desde_backup()
+    if df_bak is not None and not df_bak.empty:
+        st.success(f"✅ Cartera recuperada desde backup de seguridad ({len(df_bak)} posiciones)")
+        return df_bak
+
     return pd.DataFrame()
 
 def guardar_cartera(df):
-    try:
-        df.to_json(CARTERA_FILE, orient="records", date_format="iso")
-    except Exception as e:
-        st.error(f"Error guardando cartera: {e}")
+    """Guarda cartera en disco + backup .bak. Nunca pierde datos."""
+    if not _guardar_con_backup(df):
+        # Fallback: intentar guardar solo principal
+        try:
+            df.to_json(CARTERA_FILE, orient="records", date_format="iso")
+        except Exception as e:
+            st.error(f"Error CRITICO guardando cartera: {e}")
 
 def cargar_listas():
     if os.path.exists(LISTAS_FILE):
@@ -58,7 +125,15 @@ def cargar_registro():
     return {}
 
 def guardar_registro(registro):
+    """Guarda registro semanal con backup .bak simple."""
     try:
+        # Backup previo si existe
+        if os.path.exists(REGISTRO_FILE):
+            with open(REGISTRO_FILE, "r") as f_orig:
+                contenido = f_orig.read()
+            with open(REGISTRO_FILE + ".bak", "w") as f_bak:
+                f_bak.write(contenido)
+        # Guardar nuevo
         with open(REGISTRO_FILE, "w") as f:
             json.dump(registro, f, indent=2)
     except Exception as e:
@@ -836,7 +911,11 @@ if "listas_guardadas" not in st.session_state:
         st.session_state.listas_guardadas = LISTAS_DEFINITIVAS.copy()
 
 if "cartera_compras" not in st.session_state:
-    st.session_state.cartera_compras = cargar_cartera()
+    # SIEMPRE cargar desde disco al iniciar. Nunca empezar vacio.
+    df_cargada = cargar_cartera()
+    st.session_state.cartera_compras = df_cargada
+    if not df_cargada.empty:
+        st.toast(f"📂 Cartera cargada desde disco: {len(df_cargada)} posiciones", icon="✅")
 
 PARAMS_DEFAULT = {
     "capital_total": 30000,
@@ -890,11 +969,15 @@ def puede_comprar_esta_semana(cantidad=1, costo=1000):
     return True, "OK"
 
 def registrar_compra(ticker, costo=1000):
+    """Registra compra y guarda TODO en disco inmediatamente."""
     datos = get_registro_semana_actual()
     datos["compras_realizadas"] += 1
     datos["gastado"] += costo
     datos["tickers_comprados"].append(ticker)
     guardar_registro(st.session_state.registro_semanal)
+    # GUARDAR CARTERA EN DISCO inmediatamente tras cada compra
+    if not st.session_state.cartera_compras.empty:
+        guardar_cartera(st.session_state.cartera_compras)
 
 # ============================================================================
 # MENU DE PESTANAS
@@ -998,6 +1081,37 @@ with pestaña1:
                     st.rerun()
             except Exception as e:
                 st.error(f"❌ Error: {e}")
+
+    # ============================================================================
+    # PANEL DE ESTADO DE PERSISTENCIA
+    # ============================================================================
+    with st.expander("💾 Estado de Persistencia", expanded=False):
+        col_p1, col_p2, col_p3 = st.columns(3)
+
+        with col_p1:
+            st.write("**Archivos en disco:**")
+            existe_principal = os.path.exists(CARTERA_FILE)
+            existe_bak = os.path.exists(CARTERA_BACKUP)
+            st.write(f"📄 Principal: {'✅' if existe_principal else '❌'}")
+            st.write(f"📄 Backup .bak: {'✅' if existe_bak else '❌'}")
+
+        with col_p2:
+            if st.button("🔄 Forzar Guardado Ahora"):
+                if not st.session_state.cartera_compras.empty:
+                    guardar_cartera(st.session_state.cartera_compras)
+                    st.success("✅ Cartera guardada en disco")
+                else:
+                    st.warning("Cartera vacia")
+
+        with col_p3:
+            if existe_bak and st.button("⏪ Restaurar desde .bak"):
+                df_bak = _recuperar_desde_backup()
+                if df_bak is not None:
+                    st.session_state.cartera_compras = df_bak
+                    st.success(f"✅ Restauradas {len(df_bak)} posiciones")
+                    st.rerun()
+                else:
+                    st.error("No se pudo recuperar")
 
     # MOSTRAR CARTERA
     df_mostrar = st.session_state.cartera_compras.copy()
