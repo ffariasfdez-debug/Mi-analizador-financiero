@@ -18,7 +18,7 @@ REGISTRO_FILE = "registro_semanal.json"
 def cargar_cartera():
     if os.path.exists(CARTERA_FILE):
         try:
-            with open(CARTERA_FILE, 'r') as f:
+            with open(CARTERA_FILE, "r") as f:
                 data = json.load(f)
             if data and len(data) > 0:
                 return pd.DataFrame(data)
@@ -28,14 +28,14 @@ def cargar_cartera():
 
 def guardar_cartera(df):
     try:
-        df.to_json(CARTERA_FILE, orient='records', date_format='iso')
+        df.to_json(CARTERA_FILE, orient="records", date_format="iso")
     except Exception as e:
         st.error(f"Error guardando cartera: {e}")
 
 def cargar_listas():
     if os.path.exists(LISTAS_FILE):
         try:
-            with open(LISTAS_FILE, 'r') as f:
+            with open(LISTAS_FILE, "r") as f:
                 return json.load(f)
         except:
             pass
@@ -43,7 +43,7 @@ def cargar_listas():
 
 def guardar_listas(listas):
     try:
-        with open(LISTAS_FILE, 'w') as f:
+        with open(LISTAS_FILE, "w") as f:
             json.dump(listas, f, indent=2)
     except Exception as e:
         st.error(f"Error guardando listas: {e}")
@@ -51,7 +51,7 @@ def guardar_listas(listas):
 def cargar_registro():
     if os.path.exists(REGISTRO_FILE):
         try:
-            with open(REGISTRO_FILE, 'r') as f:
+            with open(REGISTRO_FILE, "r") as f:
                 return json.load(f)
         except:
             pass
@@ -59,7 +59,7 @@ def cargar_registro():
 
 def guardar_registro(registro):
     try:
-        with open(REGISTRO_FILE, 'w') as f:
+        with open(REGISTRO_FILE, "w") as f:
             json.dump(registro, f, indent=2)
     except Exception as e:
         st.error(f"Error guardando registro: {e}")
@@ -79,7 +79,7 @@ st.write("---")
 # ============================================================================
 LISTAS_DEFINITIVAS = {
     "🤖 Robótica y Automatización": [
-        "ABJ", "ABB", "FANUY", "SIEGY", "YASKY", "ROK", "AME", "FTV", "ETN", "EMR", "DOV",
+        "ABB", "FANUY", "SIEGY", "YASKY", "ROK", "AME", "FTV", "ETN", "EMR", "DOV",
         "ISRG", "TER", "CGNX", "NVMI", "PTC", "IRBT", "SYM", "DFKCY", "KIGRY",
         "TDY", "KEYS", "ZBRA", "SYK", "GMED", "PRCT", "DE", "CAT", "AGCO", "PCAR",
         "CMI", "ITW", "HON", "OCDO.L", "AUTO.OL"
@@ -103,7 +103,8 @@ LISTAS_DEFINITIVAS = {
     ]
 }
 
-TICKER_ALIASES = {"ABJ": "ABB"}
+# MEJORA 1: Eliminado alias ABJ -> ABB (ABJ no es ticker estandar)
+TICKER_ALIASES = {}
 
 # ============================================================================
 # FUNCIONES AUXILIARES
@@ -111,20 +112,20 @@ TICKER_ALIASES = {"ABJ": "ABB"}
 
 def detectar_moneda(ticker):
     ticker_upper = ticker.upper().strip()
-    sufijos_eur = ['.AS', '.PA', '.DE', '.BR', '.MI', '.MC', '.ST', '.HE', '.CO', '.OL', '.VI', '.LS', '.IR']
+    sufijos_eur = [".AS", ".PA", ".DE", ".BR", ".MI", ".MC", ".ST", ".HE", ".CO", ".OL", ".VI", ".LS", ".IR"]
     for sufijo in sufijos_eur:
         if ticker_upper.endswith(sufijo):
-            return 'EUR'
-    if ticker_upper.endswith('.L') or ticker_upper.endswith('.LN'):
-        return 'GBP'
-    return 'USD'
+            return "EUR"
+    if ticker_upper.endswith(".L") or ticker_upper.endswith(".LN"):
+        return "GBP"
+    return "USD"
 
 def simbolo_moneda(moneda):
-    simbolos = {'EUR': '€', 'USD': '$', 'GBP': '£', 'CHF': 'CHF', 'JPY': '¥', 'CAD': 'C$'}
-    return simbolos.get(moneda, '$')
+    simbolos = {"EUR": "€", "USD": "$", "GBP": "£", "CHF": "CHF", "JPY": "¥", "CAD": "C$"}
+    return simbolos.get(moneda, "$")
 
 def comprobar_mercado_abierto():
-    tz_ny = pytz.timezone('America/New_York')
+    tz_ny = pytz.timezone("America/New_York")
     hora_ny = datetime.now(tz_ny)
     dia_semana = hora_ny.weekday()
     inicio_mercado = hora_ny.replace(hour=9, minute=30, second=0, microsecond=0)
@@ -133,7 +134,7 @@ def comprobar_mercado_abierto():
 
 def calcular_rsi(historial, periodo=14):
     try:
-        delta = historial['Close'].diff()
+        delta = historial["Close"].diff()
         ganancia = (delta.where(delta > 0, 0)).rolling(window=periodo).mean()
         perdida = (-delta.where(delta < 0, 0)).rolling(window=periodo).mean()
         rs = ganancia / perdida
@@ -149,8 +150,8 @@ def calcular_beta(historial, beta_info=None):
         spy_hist = yf.Ticker("SPY").history(period="1y")
         if spy_hist.empty or len(spy_hist) < 30:
             return estimar_beta_desde_volatilidad(historial)
-        stock_recent = historial['Close'].iloc[-90:]
-        spy_recent = spy_hist['Close'].iloc[-90:]
+        stock_recent = historial["Close"].iloc[-90:]
+        spy_recent = spy_hist["Close"].iloc[-90:]
         common_idx = stock_recent.index.intersection(spy_recent.index)
         if len(common_idx) < 20:
             return estimar_beta_desde_volatilidad(historial)
@@ -173,7 +174,7 @@ def calcular_beta(historial, beta_info=None):
 
 def estimar_beta_desde_volatilidad(historial):
     try:
-        retornos = historial['Close'].pct_change().dropna().iloc[-90:]
+        retornos = historial["Close"].pct_change().dropna().iloc[-90:]
         if len(retornos) < 20:
             return None
         volatilidad_stock = retornos.std() * np.sqrt(252)
@@ -186,13 +187,13 @@ def estimar_beta_desde_volatilidad(historial):
         return None
 
 # ============================================================================
-# NUEVO MOTOR DE ANALISIS LIMPIO (v5.0)
+# NUEVO MOTOR DE ANALISIS LIMPIO (v6.1) - CON CONTEXTO DE CAIDA
 # ============================================================================
 
 def calcular_metricas_limpias(historial, precio_actual, ticker):
-    """Calcula metricas limpias. Devuelve: (crecimiento_anualizado, upside_analista)"""
+    """Calcula metricas limpias. Devuelve: (crecimiento_anualizado, upside_analista, revenue_growth)"""
     try:
-        precio_60d = historial['Close'].iloc[-60] if len(historial) >= 60 else historial['Close'].iloc[0]
+        precio_60d = historial["Close"].iloc[-60] if len(historial) >= 60 else historial["Close"].iloc[0]
         if precio_60d > 0 and precio_actual > 0:
             crec_anual = ((precio_actual / precio_60d) ** (252/60) - 1) * 100
             crec_anual = round(crec_anual, 1)
@@ -202,25 +203,244 @@ def calcular_metricas_limpias(historial, precio_actual, ticker):
         crec_anual = 0.0
 
     upside_anal = None
+    revenue_growth = None
     try:
         ticker_real = TICKER_ALIASES.get(ticker.upper(), ticker)
         t = yf.Ticker(ticker_real)
         info = t.info
-        target = info.get('targetMedianPrice', None)
+        target = info.get("targetMedianPrice", None)
         if target and target > 0 and precio_actual > 0:
             upside = ((target - precio_actual) / precio_actual) * 100
             if -50 < upside < 50:
                 upside_anal = round(upside, 1)
+        rev_growth = info.get("revenueGrowth", None)
+        if rev_growth is not None and not np.isnan(rev_growth):
+            revenue_growth = round(rev_growth * 100, 1)
     except:
-        upside_anal = None
+        pass
 
-    return crec_anual, upside_anal
+    return crec_anual, upside_anal, revenue_growth
 
 
-def calcular_score_y_status(crec_anual, upside_anal, rsi_valor, media_200, precio_actual):
-    """Nuevo scoring limpio sobre 10 puntos. Devuelve: (score, status, motivos_list)"""
+def calcular_confianza_dato(crec_anual, upside_anal, revenue_growth):
+    """
+    Evalua la coherencia entre fuentes de datos.
+    - ALTA: Fuentes alineadas o solo una fuente disponible
+    - MEDIA: Divergencia moderada entre fuentes
+    - BAJA: Divergencia fuerte (>50%), posible dato contaminado
+    """
+    fuentes = []
+    if crec_anual is not None and crec_anual != 0:
+        fuentes.append(("momentum", crec_anual))
+    if upside_anal is not None:
+        fuentes.append(("target", upside_anal))
+    if revenue_growth is not None:
+        fuentes.append(("fundamental", revenue_growth))
+    
+    if len(fuentes) < 2:
+        return "ALTA", "Dato unico - sin comparacion"
+    
+    valores = [v for _, v in fuentes]
+    max_val = max(valores)
+    min_val = min(valores)
+    
+    if max_val == 0:
+        return "ALTA", "Valores cercanos a cero"
+    
+    divergencia_pct = abs(max_val - min_val) / abs(max_val) * 100
+    
+    if divergencia_pct > 50:
+        return "BAJA", f"Divergencia {divergencia_pct:.0f}% entre fuentes"
+    elif divergencia_pct > 25:
+        return "MEDIA", f"Divergencia {divergencia_pct:.0f}% entre fuentes"
+    else:
+        return "ALTA", f"Fuentes alineadas ({divergencia_pct:.0f}%)"
+
+
+def calcular_potencial_compuesto(crec_anual, upside_anal, revenue_growth):
+    """
+    Combina tres fuentes de potencial con ponderacion para Buy & Hold 4Y:
+    - 40% momentum 60d (hecho reciente)
+    - 30% upside analista (estimacion 12m)
+    - 30% revenue growth YoY (fundamental)
+    """
+    pesos = []
+    valores = []
+    
+    if crec_anual is not None and crec_anual != 0:
+        pesos.append(0.40)
+        valores.append(crec_anual)
+    if upside_anal is not None:
+        pesos.append(0.30)
+        valores.append(upside_anal)
+    if revenue_growth is not None:
+        pesos.append(0.30)
+        valores.append(revenue_growth)
+    
+    if not pesos:
+        return None
+    
+    total_pesos = sum(pesos)
+    pesos_norm = [p / total_pesos for p in pesos]
+    
+    potencial = sum(v * p for v, p in zip(valores, pesos_norm))
+    return round(potencial, 1)
+
+# ============================================================================
+# NUEVAS FUNCIONES v6.1: CONTEXTO DE CAIDA Y CLASIFICACION
+# ============================================================================
+
+def analizar_contexto_caida(ticker, cambio_hoy_pct):
+    """
+    Determina si la caida es idiosincratica, sistemica o tecnica.
+    Compara con SPY y con ETF de sector.
+    Devuelve: (origen, fortaleza_relativa, mensaje, recomendacion)
+    """
+    try:
+        # Descargar SPY para comparar con mercado
+        spy = yf.Ticker("SPY").history(period="5d")
+        if len(spy) >= 2:
+            cambio_spy = ((spy["Close"].iloc[-1] - spy["Close"].iloc[-2]) / spy["Close"].iloc[-2]) * 100
+        else:
+            cambio_spy = 0
+    except:
+        cambio_spy = 0
+    
+    # Determinar si el mercado se movio fuerte
+    mercado_volatil = abs(cambio_spy) > 2
+    
+    if mercado_volatil:
+        diferencia = cambio_hoy_pct - cambio_spy
+        if cambio_hoy_pct < cambio_spy - 3:
+            return "SISTEMICA", "DEBIL", f"Mercado {cambio_spy:.1f}%, tu caida {cambio_hoy_pct:.1f}% (mucho peor)", "🚩 TRAMPA: Caes mas que el mercado"
+        elif cambio_hoy_pct > cambio_spy + 2:
+            return "SISTEMICA", "FUERTE", f"Mercado {cambio_spy:.1f}%, tu caida {cambio_hoy_pct:.1f}% (mejor que mercado)", "💪 OPORTUNIDAD: Fortaleza relativa"
+        else:
+            return "SISTEMICA", "NEUTRA", f"Mercado {cambio_spy:.1f}%, tu caida {cambio_hoy_pct:.1f}% (alineado)", "🤔 SISTEMICA: Esperar estabilizacion"
+    
+    # Si mercado tranquilo pero caida fuerte -> idiosincratica
+    return "IDIOSINCRATICA", None, f"Mercado tranquilo ({cambio_spy:.1f}%), tu caida {cambio_hoy_pct:.1f}%", "🔍 Analizar noticia especifica"
+
+
+def clasificar_caida(historial, precio_actual, cambio_hoy_pct):
+    """
+    Clasifica la caida en: PANICO, SOBREVENTA, o INCERTIDUMBRE.
+    Usa volumen como proxy de panico institucional.
+    Devuelve: (clasificacion, mensaje)
+    """
+    try:
+        volumen_hoy = historial["Volume"].iloc[-1]
+        media_volumen_20 = historial["Volume"].iloc[-21:-1].mean()
+        ratio_volumen = volumen_hoy / media_volumen_20 if media_volumen_20 > 0 else 1
+    except:
+        ratio_volumen = 1
+    
+    # Caída 15%+ con volumen normal -> sobreventa tecnica (oportunidad)
+    if abs(cambio_hoy_pct) >= 15 and ratio_volumen < 1.5:
+        return "SOBREVENTA_TECNICA", f"Caida {cambio_hoy_pct:.1f}% con volumen normal (x{ratio_volumen:.1f}) -> Sobreventa exagerada"
+    
+    # Caída 15%+ con volumen 3x+ -> panico institucional (trampa)
+    if abs(cambio_hoy_pct) >= 15 and ratio_volumen > 3:
+        return "PANICO_INSTITUCIONAL", f"Caida {cambio_hoy_pct:.1f}% con volumen masivo (x{ratio_volumen:.1f}) -> Panico institucional"
+    
+    # Caída 15%+ con volumen 1.5-3x -> alta incertidumbre (esperar)
+    if abs(cambio_hoy_pct) >= 15:
+        return "ALTA_INCERTIDUMBRE", f"Caida {cambio_hoy_pct:.1f}% con volumen elevado (x{ratio_volumen:.1f}) -> Esperar 48h"
+    
+    # Caída 7-15% con volumen alto -> posible trampa
+    if abs(cambio_hoy_pct) >= 7 and ratio_volumen > 2:
+        return "ALTA_INCERTIDUMBRE", f"Caida {cambio_hoy_pct:.1f}% con volumen alto (x{ratio_volumen:.1f}) -> Precaucion"
+    
+    # Caída moderada <7% -> normal
+    return "CAIDA_NORMAL", f"Caida {cambio_hoy_pct:.1f}% con volumen x{ratio_volumen:.1f} -> Dentro de rango normal"
+
+
+def evaluar_caida_para_buyhold(ticker, historial, precio_actual, crec_anual, upside_anal, revenue_growth, score_base, status_base, motivos_base):
+    """
+    Evalua una caida reciente desde la perspectiva de Buy & Hold 4Y.
+    Aplica reglas de disciplina: no comprar el dia de la caida, esperar 48h.
+    Devuelve: (score_modificado, status_modificado, motivos_modificados, alertas)
+    """
+    alertas = []
+    score = score_base
+    status = status_base
+    motivos = motivos_base.copy()
+    
+    try:
+        precio_ayer = historial["Close"].iloc[-2]
+        cambio_hoy = ((precio_actual - precio_ayer) / precio_ayer) * 100
+    except:
+        return score, status, motivos, alertas
+    
+    # Si no hay caida significativa, no hacer nada
+    if cambio_hoy > -5:
+        return score, status, motivos, alertas
+    
+    # Analizar contexto y clasificar
+    origen, fortaleza, msg_contexto, recom_contexto = analizar_contexto_caida(ticker, cambio_hoy)
+    clasificacion, msg_clasificacion = clasificar_caida(historial, precio_actual, cambio_hoy)
+    
+    alertas.append(f"📉 Caida hoy: {cambio_hoy:.1f}% | {msg_contexto}")
+    alertas.append(f"📊 Clasificacion: {clasificacion} | {msg_clasificacion}")
+    
+    # REGLAS DE DECISION PARA BUY & HOLD
+    
+    # 1. PANICO INSTITUCIONAL -> NO COMPRAR, posible vender si ya tienes
+    if clasificacion == "PANICO_INSTITUCIONAL":
+        score = 0
+        status = "🔴 NO COMPRAR"
+        motivos.insert(0, f"🚩 PANICO INSTITUCIONAL: {msg_clasificacion}")
+        alertas.append("🚫 NO COMPRAR: Esperar 3-5 dias minimo")
+        return score, status, motivos, alertas
+    
+    # 2. ALTA INCERTIDUMBRE -> penalizar, esperar 48h
+    if clasificacion == "ALTA_INCERTIDUMBRE":
+        score -= 3
+        motivos.append(f"⏳ Alta incertidumbre post-caida: {msg_clasificacion}")
+        alertas.append("⏳ ESPERAR 48h: No comprar hoy, revisar manana")
+        if score < 4 and status == "🟢 COMPRAR":
+            status = "🟡 ACUMULAR"
+        if score < 4 and status == "🟡 ACUMULAR":
+            status = "🔴 OBSERVAR"
+        return score, status, motivos, alertas
+    
+    # 3. SOBREVENTA TECNICA -> oportunidad SOLO si fundamental intacto
+    if clasificacion == "SOBREVENTA_TECNICA":
+        if revenue_growth and revenue_growth >= 10:
+            motivos.append(f"🎯 SOBREVENTA TECNICA en fondamental sano: {msg_clasificacion}")
+            alertas.append("✅ OPORTUNIDAD: Caida exagerada, fundamental intacto")
+            alertas.append("⚠️ PERO: No comprar hoy. Esperar confirmacion manana")
+            # Mantener score pero marcar para revision manana
+        else:
+            score -= 2
+            motivos.append(f"⚠️ Sobreventa pero fondamental debil: {msg_clasificacion}")
+            alertas.append("🚫 PRECAUCION: Sin revenue growth fuerte, no es oportunidad clara")
+        return score, status, motivos, alertas
+    
+    # 4. CAIDA SISTEMICA con fortaleza relativa -> oportunidad
+    if origen == "SISTEMICA" and fortaleza == "FUERTE":
+        motivos.append(f"💪 Fortaleza relativa en caida sistemica: {msg_contexto}")
+        alertas.append("✅ OPORTUNIDAD: Caes menos que el mercado, muestra resistencia")
+        return score, status, motivos, alertas
+    
+    # 5. CAIDA SISTEMICA con debilidad relativa -> trampa
+    if origen == "SISTEMICA" and fortaleza == "DEBIL":
+        score -= 2
+        motivos.append(f"🚩 Debilidad relativa en caida sistemica: {msg_contexto}")
+        alertas.append("🚫 TRAMPA: Caes mas que el mercado, hay problema especifico")
+        if score < 4:
+            status = "🔴 OBSERVAR"
+        return score, status, motivos, alertas
+    
+    
+    return score, status, motivos, alertas
+
+def calcular_score_y_status(crec_anual, upside_anal, revenue_growth, rsi_valor, media_200, precio_actual):
+    """Nuevo scoring v6.1 sobre 10 puntos. Penaliza si Potencial Compuesto < 20%."""
     score = 0
     motivos = []
+    
+    potencial = calcular_potencial_compuesto(crec_anual, upside_anal, revenue_growth)
 
     if precio_actual > media_200:
         score += 4
@@ -229,8 +449,8 @@ def calcular_score_y_status(crec_anual, upside_anal, rsi_valor, media_200, preci
         motivos.append("Sin tendencia alcista")
 
     if crec_anual >= 20.0:
-        score += 3
-        motivos.append(f"Momentum fuerte {crec_anual:.1f}% (+3)")
+        score += 2
+        motivos.append(f"Momentum fuerte {crec_anual:.1f}% (+2)")
     elif crec_anual >= 10.0:
         score += 1
         motivos.append(f"Momentum moderado {crec_anual:.1f}% (+1)")
@@ -238,13 +458,28 @@ def calcular_score_y_status(crec_anual, upside_anal, rsi_valor, media_200, preci
         motivos.append(f"Momentum debil {crec_anual:.1f}%")
 
     if upside_anal is not None and upside_anal > 10.0:
-        score += 3
-        motivos.append(f"Upside analista {upside_anal:.1f}% (+3)")
+        score += 2
+        motivos.append(f"Upside analista {upside_anal:.1f}% (+2)")
     elif upside_anal is not None and upside_anal > 0:
         score += 1
         motivos.append(f"Upside analista {upside_anal:.1f}% (+1)")
     else:
         motivos.append("Sin upside analista confirmado")
+
+    if revenue_growth is not None and revenue_growth >= 20.0:
+        score += 2
+        motivos.append(f"Revenue growth fuerte {revenue_growth:.1f}% (+2)")
+    elif revenue_growth is not None and revenue_growth >= 10.0:
+        score += 1
+        motivos.append(f"Revenue growth moderado {revenue_growth:.1f}% (+1)")
+    elif revenue_growth is not None:
+        motivos.append(f"Revenue growth debil {revenue_growth:.1f}%")
+    else:
+        motivos.append("Sin datos de revenue growth")
+
+    if potencial is not None and potencial < 20.0:
+        score -= 2
+        motivos.append(f"⚠️ Potencial compuesto {potencial:.1f}% < 20% (-2)")
 
     if rsi_valor > 70:
         score -= 3
@@ -262,7 +497,7 @@ def calcular_score_y_status(crec_anual, upside_anal, rsi_valor, media_200, preci
     else:
         status = "🔴 OBSERVAR"
 
-    return score, status, motivos
+    return score, status, motivos, potencial
 
 # ============================================================================
 # FUNCIONES DE DATOS
@@ -275,26 +510,27 @@ def obtener_info_segura(ticker):
         t = yf.Ticker(ticker_real)
         info = t.info
         if not info or len(info) < 5:
-            return None, None, detectar_moneda(ticker), None, None, None, None
-        target = info.get('targetMedianPrice', None)
-        dy = info.get('dividendYield', None)
-        moneda = info.get('currency', detectar_moneda(ticker))
-        pct_inst = info.get('heldPercentInstitutions', None)
-        market_cap = info.get('marketCap', None)
-        sector = info.get('sector', None)
-        beta_info = info.get('beta', None)
+            return None, None, detectar_moneda(ticker), None, None, None, None, None
+        target = info.get("targetMedianPrice", None)
+        dy = info.get("dividendYield", None)
+        moneda = info.get("currency", detectar_moneda(ticker))
+        pct_inst = info.get("heldPercentInstitutions", None)
+        market_cap = info.get("marketCap", None)
+        sector = info.get("sector", None)
+        beta_info = info.get("beta", None)
         if beta_info is None:
-            beta_info = info.get('beta3Year', None)
+            beta_info = info.get("beta3Year", None)
         if beta_info is None:
-            beta_info = info.get('beta5Year', None)
+            beta_info = info.get("beta5Year", None)
+        revenue_growth = info.get("revenueGrowth", None)
         if dy is not None:
             if dy > 1.0:
                 dy = dy / 100.0
             if dy > 0.10:
                 dy = 0.0
-        return target, dy, moneda, pct_inst, market_cap, sector, beta_info
+        return target, dy, moneda, pct_inst, market_cap, sector, beta_info, revenue_growth
     except:
-        return None, None, detectar_moneda(ticker), None, None, None, None
+        return None, None, detectar_moneda(ticker), None, None, None, None, None
 
 def descargar_datos_seguro(tickers, period="1y", interval=None, actions=False):
     if isinstance(tickers, list):
@@ -341,7 +577,7 @@ def extraer_precio_actual(datos_minuto, ticker, historial):
         if not datos_minuto.empty:
             niveles = datos_minuto.columns.get_level_values(0)
             if ticker in niveles:
-                precio = datos_minuto[ticker]['Close'].dropna()
+                precio = datos_minuto[ticker]["Close"].dropna()
                 if len(precio) > 0:
                     ultimo = precio.iloc[-1]
                     if pd.notna(ultimo) and float(ultimo) > 0:
@@ -350,7 +586,7 @@ def extraer_precio_actual(datos_minuto, ticker, historial):
         pass
     try:
         if not historial.empty:
-            precio = historial['Close'].iloc[-1]
+            precio = historial["Close"].iloc[-1]
             if pd.notna(precio) and float(precio) > 0:
                 return float(precio)
     except:
@@ -359,14 +595,14 @@ def extraer_precio_actual(datos_minuto, ticker, historial):
 
 def calcular_dividend_yield(historial, precio_actual, ticker):
     try:
-        _, dy, _, _, _, _ = obtener_info_segura(ticker)
+        _, dy, _, _, _, _, _, _ = obtener_info_segura(ticker)
         if dy is not None and dy > 0:
             return dy
     except:
         pass
     try:
-        if 'Dividends' in historial.columns and precio_actual > 0:
-            dividendos_anuales = historial['Dividends'].tail(252).sum()
+        if "Dividends" in historial.columns and precio_actual > 0:
+            dividendos_anuales = historial["Dividends"].tail(252).sum()
             if dividendos_anuales > 0:
                 dy_calc = dividendos_anuales / precio_actual
                 return min(dy_calc, 0.10)
@@ -390,7 +626,7 @@ def formatear_market_cap(mc):
         return f"{mc/1e6:.2f}M"
     return f"{mc:.0f}"
 
-def formatear_pnl(ganancia_valor, ganancia_pct, moneda='USD'):
+def formatear_pnl(ganancia_valor, ganancia_pct, moneda="USD"):
     sym = simbolo_moneda(moneda)
     if ganancia_valor > 0:
         return f"🟩 +{ganancia_valor:.2f} {sym} (+{ganancia_pct:.2f}%)"
@@ -400,7 +636,7 @@ def formatear_pnl(ganancia_valor, ganancia_pct, moneda='USD'):
 
 def calcular_dias_candado(fecha_candado_str):
     try:
-        fecha_candado = datetime.strptime(fecha_candado_str.replace('🔒 ', '').strip(), '%d/%m/%Y')
+        fecha_candado = datetime.strptime(fecha_candado_str.replace("🔒 ", "").strip(), "%d/%m/%Y")
         hoy = datetime.now()
         dias = (fecha_candado - hoy).days
         return dias
@@ -412,10 +648,13 @@ def esta_candado_liberado(fecha_candado_str):
 
 def generar_veredicto(fila):
     try:
-        ticker = str(fila.get('Ticker', 'N/A'))
-        score = fila.get('Score', 0)
-        crec = str(fila.get('Crecimiento Anualizado', '0%'))
-        upside = str(fila.get('Upside Analista', 'N/A'))
+        ticker = str(fila.get("Ticker", "N/A"))
+        score = fila.get("Score", 0)
+        crec = str(fila.get("Crecimiento Anualizado", "0%"))
+        upside = str(fila.get("Upside Analista", "N/A"))
+        potencial = str(fila.get("Potencial Compuesto", "N/A"))
+        confianza = str(fila.get("Confianza Dato", "N/A"))
+        alertas = fila.get("Alertas Caida", "")
         veredictos = []
         if score >= 7:
             veredictos.append("🚀 Score excelente")
@@ -424,24 +663,42 @@ def generar_veredicto(fila):
         else:
             veredictos.append("⚠️ Score debil")
         if upside != "N/A" and upside != "0%":
-            upside_num = float(upside.replace('%', '').strip()) if '%' in upside else 0
+            upside_num = float(upside.replace("%", "").strip()) if "%" in upside else 0
             if upside_num > 20:
                 veredictos.append("upside analista fuerte")
             elif upside_num > 10:
                 veredictos.append("upside analista moderado")
+        if potencial != "N/A":
+            pot_num = float(potencial.replace("%", "").strip()) if "%" in potencial else 0
+            if pot_num < 20:
+                veredictos.append("⚠️ potencial < 20%")
+        if "🔴" in confianza or "BAJA" in confianza:
+            veredictos.append("🚩 confianza de datos baja")
+        if alertas and len(alertas) > 0:
+            if "PANICO" in alertas or "TRAMPA" in alertas:
+                veredictos.insert(0, "🚨 ALERTA CAIDA")
         return " | ".join(veredictos)
     except Exception as e:
         return f"⚠️ Error: {str(e)[:30]}"
+
 
 def analizar_cartera_global(df):
     if df.empty:
         return []
     recomendaciones = []
     scores = []
+    potenciales = []
+    alertas_caida = 0
     for _, fila in df.iterrows():
         try:
-            s = float(fila.get('Score', 0)) if pd.notna(fila.get('Score', 0)) else 0
+            s = float(fila.get("Score", 0)) if pd.notna(fila.get("Score", 0)) else 0
             scores.append(s)
+            p = fila.get("Potencial Compuesto", "N/A")
+            if p != "N/A":
+                potenciales.append(float(p.replace("%", "")))
+            alertas = fila.get("Alertas Caida", "")
+            if alertas and ("PANICO" in alertas or "TRAMPA" in alertas):
+                alertas_caida += 1
         except:
             pass
     score_medio = sum(scores) / len(scores) if scores else 0
@@ -451,18 +708,29 @@ def analizar_cartera_global(df):
         recomendaciones.append(f"⚖️ **Score medio {score_medio:.1f}/10**: Cartera equilibrada.")
     else:
         recomendaciones.append(f"🛡️ **Score medio {score_medio:.1f}/10**: Revisar fundamentales.")
+    
+    if potenciales:
+        pot_medio = sum(potenciales) / len(potenciales)
+        if pot_medio < 20:
+            recomendaciones.append(f"⚠️ **Potencial medio cartera {pot_medio:.1f}% < 20%** - Revisar seleccion")
+        else:
+            recomendaciones.append(f"✅ **Potencial medio cartera {pot_medio:.1f}%** - Buen horizonte")
+    
+    if alertas_caida > 0:
+        recomendaciones.append(f"🚨 **{alertas_caida} activos con alerta de caida** - Revisar urgentemente")
+    
     candados_proximos = []
     for _, fila in df.iterrows():
-        candado = str(fila.get('Candado', ''))
+        candado = str(fila.get("Candado", ""))
         dias = calcular_dias_candado(candado)
         if 0 < dias <= 14:
-            candados_proximos.append(f"{fila['Ticker']} ({dias}d)")
+            candados_proximos.append(f"{fila["Ticker"]} ({dias}d)")
     if candados_proximos:
         recomendaciones.append(f"🔓 **Candados proximos:** {', '.join(candados_proximos)}")
     sectores = set()
-    for tick in df['Ticker'].tolist():
+    for tick in df["Ticker"].tolist():
         try:
-            _, _, _, _, _, sector, _ = obtener_info_segura(tick)
+            _, _, _, _, _, sector, _, _ = obtener_info_segura(tick)
             if sector:
                 sectores.add(sector)
         except:
@@ -477,18 +745,15 @@ def analizar_cartera_global(df):
     recomendaciones.append("• Revisa esta cartera una vez por semana, no diariamente.")
     return recomendaciones
 
-# ============================================================================
-# DETECCION DE CAIDA VIOLENTA
-# ============================================================================
 
 def detectar_caida_violenta(historial, precio_actual):
     try:
-        precio_ayer = historial['Close'].iloc[-2]
+        precio_ayer = historial["Close"].iloc[-2]
         cambio_hoy = ((precio_actual - precio_ayer) / precio_ayer) * 100
-        maximo_20d = historial['Close'].iloc[-20:].max()
+        maximo_20d = historial["Close"].iloc[-20:].max()
         caida_vs_max = ((precio_actual - maximo_20d) / maximo_20d) * 100
-        volumen_hoy = historial['Volume'].iloc[-1]
-        media_volumen_20 = historial['Volume'].iloc[-21:-1].mean()
+        volumen_hoy = historial["Volume"].iloc[-1]
+        media_volumen_20 = historial["Volume"].iloc[-21:-1].mean()
         ratio_volumen = volumen_hoy / media_volumen_20 if media_volumen_20 > 0 else 1
 
         if cambio_hoy < -10:
@@ -505,7 +770,7 @@ def detectar_caida_violenta(historial, precio_actual):
             return True, f"CAIDA SIGNIFICATIVA: {cambio_hoy:.1f}%", 1
         if caida_vs_max < -20 and cambio_hoy < -3:
             return True, f"EN CAIDA LIBRE: -{abs(caida_vs_max):.1f}% desde maximo 20d, hoy {cambio_hoy:.1f}%", 2
-        minimo_20d = historial['Close'].iloc[-20:].min()
+        minimo_20d = historial["Close"].iloc[-20:].min()
         if precio_actual < minimo_20d * 0.98 and cambio_hoy < -3:
             return True, f"RUPTURA DE SOPORTE: rompio minimo 20d con {cambio_hoy:.1f}%", 2
         return False, "", 0
@@ -572,9 +837,9 @@ def puede_comprar_esta_semana(cantidad=1, costo=1000):
     tope = st.session_state.params_bot["tope_semanal"]
     max_compras = st.session_state.params_bot["max_compras_semanal"]
     if datos["gastado"] + costo > tope:
-        return False, f"Tope semanal: {datos['gastado']:.0f}/{tope}"
+        return False, f"Tope semanal: {datos["gastado"]:.0f}/{tope}"
     if datos["compras_realizadas"] + cantidad > max_compras:
-        return False, f"Max {max_compras} compras: {datos['compras_realizadas']}/{max_compras}"
+        return False, f"Max {max_compras} compras: {datos["compras_realizadas"]}/{max_compras}"
     return True, "OK"
 
 def registrar_compra(ticker, costo=1000):
@@ -659,7 +924,7 @@ with pestaña1:
             if not st.session_state.cartera_compras.empty:
                 antes = len(st.session_state.cartera_compras)
                 st.session_state.cartera_compras = st.session_state.cartera_compras.drop_duplicates(
-                    subset=['Ticker'], keep='last'
+                    subset=["Ticker"], keep="last"
                 ).reset_index(drop=True)
                 guardar_cartera(st.session_state.cartera_compras)
                 st.success(f"Eliminados {antes - len(st.session_state.cartera_compras)} duplicados.")
@@ -687,278 +952,6 @@ with pestaña1:
             except Exception as e:
                 st.error(f"❌ Error: {e}")
 
-    if ejecutar_bot:
-        st.cache_data.clear()
-        st.toast("Analizando universo...")
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-
-        if lista_bot == "🌍 TODAS LAS LISTAS":
-            lista_tickers = []
-            for lista in st.session_state.listas_guardadas.values():
-                for t in lista:
-                    if t not in lista_tickers:
-                        lista_tickers.append(t)
-            st.info(f"🌍 Analizando {len(lista_tickers)} tickers de todas las listas")
-        else:
-            lista_tickers = st.session_state.listas_guardadas[lista_bot]
-
-        if not lista_tickers:
-            st.error("Lista vacia.")
-        else:
-            status_text.text("📥 Descargando datos historicos...")
-            datos_globales = descargar_datos_seguro(lista_tickers, period="1y", actions=True)
-            progress_bar.progress(20)
-
-            status_text.text("📥 Descargando datos recientes...")
-            datos_minuto = descargar_datos_seguro(lista_tickers, period="1d", interval="1m")
-            progress_bar.progress(40)
-
-            resultados_analisis = []
-            total_tickers = len(lista_tickers)
-
-            for idx, tick in enumerate(lista_tickers):
-                progress = 40 + int((idx / total_tickers) * 40)
-                progress_bar.progress(min(progress, 80))
-                status_text.text(f"🔍 {tick}... ({idx+1}/{total_tickers})")
-
-                try:
-                    historial = extraer_historial(datos_globales, tick)
-                    if historial.empty or len(historial) < 50:
-                        resultados_analisis.append({
-                            "Ticker": tick, "Status": "⚪ SIN DATOS", "Score": 0,
-                            "Precio Actual": None, "Crecimiento Anualizado": "N/A",
-                            "Upside Analista": "N/A", "RSI": "N/A", "Beta": "N/A",
-                            "Alerta Volatilidad": "", "Volumen H.F.": "N/A",
-                            "Moneda": detectar_moneda(tick),
-                            "Simbolo": simbolo_moneda(detectar_moneda(tick)),
-                            "Pct Institucional": None, "Market Cap": None,
-                            "Sector": None, "Motivo": "Datos insuficientes"
-                        })
-                        continue
-
-                    precio_actual = extraer_precio_actual(datos_minuto, tick, historial)
-                    if precio_actual is None or precio_actual <= 0:
-                        resultados_analisis.append({
-                            "Ticker": tick, "Status": "⚪ SIN DATOS", "Score": 0,
-                            "Precio Actual": None, "Crecimiento Anualizado": "N/A",
-                            "Upside Analista": "N/A", "RSI": "N/A", "Beta": "N/A",
-                            "Alerta Volatilidad": "", "Volumen H.F.": "N/A",
-                            "Moneda": detectar_moneda(tick),
-                            "Simbolo": simbolo_moneda(detectar_moneda(tick)),
-                            "Pct Institucional": None, "Market Cap": None,
-                            "Sector": None, "Motivo": "Precio no disponible"
-                        })
-                        continue
-
-                    rsi_valor = calcular_rsi(historial)
-                    media_200 = historial['Close'].iloc[-200:].mean() if len(historial) >= 200 else historial['Close'].iloc[-50:].mean()
-
-                    target_estimado, div_yield, moneda_detectada, pct_inst, market_cap, sector, beta_info = obtener_info_segura(tick)
-                    beta_valor = calcular_beta(historial, beta_info)
-
-                    if div_yield is None or div_yield == 0:
-                        div_yield = calcular_dividend_yield(historial, precio_actual, tick)
-
-                    # ============================================
-                    # NUEVO MOTOR DE ANALISIS LIMPIO (v5.0)
-                    # ============================================
-
-                    crec_anual, upside_anal = calcular_metricas_limpias(historial, precio_actual, tick)
-
-                    score, status, motivos = calcular_score_y_status(
-                        crec_anual, upside_anal, rsi_valor, media_200, precio_actual
-                    )
-
-                    alerta_caida = None
-                    es_peligroso, motivo_caida, severidad = detectar_caida_violenta(historial, precio_actual)
-                    if es_peligroso and severidad >= 2:
-                        alerta_caida = motivo_caida
-                        status = "🔴 NO COMPRAR"
-                        score = 0
-                        motivos.insert(0, f"🚨 {motivo_caida}")
-
-                    volumen_actual = historial['Volume'].iloc[-1]
-                    media_volumen_20 = historial['Volume'].iloc[-21:-1].mean()
-                    fuerza_volumen = "🔥 ALTO" if volumen_actual > (media_volumen_20 * 1.15) else "🟢 NORMAL"
-
-                    alerta_vol = ""
-                    if beta_valor is not None and beta_valor > 2.0:
-                        alerta_vol = "⚠️ BETA ALTO"
-                    elif beta_valor is not None and beta_valor > 1.5:
-                        alerta_vol = "⚡ Volatil"
-
-                    sym = simbolo_moneda(moneda_detectada)
-
-                    resultados_analisis.append({
-                        "Ticker": tick,
-                        "Status": status,
-                        "Score": score,
-                        "Precio Actual": precio_actual,
-                        "Crecimiento Anualizado": crec_anual,
-                        "Upside Analista": f"{upside_anal:.1f}%" if upside_anal is not None else "N/A",
-                        "RSI": f"{rsi_valor:.1f}",
-                        "Beta": f"{beta_valor:.2f}" if beta_valor is not None else "N/A",
-                        "Alerta Volatilidad": alerta_vol,
-                        "Volumen H.F.": fuerza_volumen,
-                        "Dividendo": div_yield if div_yield else 0,
-                        "Moneda": moneda_detectada,
-                        "Simbolo": sym,
-                        "Pct Institucional": pct_inst,
-                        "Market Cap": market_cap,
-                        "Sector": sector,
-                        "Motivo": "; ".join(motivos) if motivos else "Sin fortalezas destacadas"
-                    })
-                except Exception as e:
-                    resultados_analisis.append({
-                        "Ticker": tick, "Status": "⚪ ERROR", "Score": 0,
-                        "Precio Actual": None, "Crecimiento Anualizado": "N/A",
-                        "Upside Analista": "N/A", "RSI": "N/A", "Beta": "N/A",
-                        "Alerta Volatilidad": "", "Volumen H.F.": "N/A",
-                        "Moneda": detectar_moneda(tick),
-                        "Simbolo": simbolo_moneda(detectar_moneda(tick)),
-                        "Pct Institucional": None, "Market Cap": None,
-                        "Sector": None, "Motivo": f"Error: {str(e)[:30]}"
-                    })
-
-            progress_bar.progress(85)
-            status_text.text("💼 Procesando resultados...")
-
-            df_resultados = pd.DataFrame(resultados_analisis)
-            df_resultados = df_resultados.sort_values(by="Score", ascending=False)
-
-            st.write("#### 📊 Resultados del Analisis Completo")
-            st.write(f"**{len(df_resultados)} activos analizados**")
-
-            cols_mostrar = ["Ticker", "Status", "Score", "Precio Actual", "Crecimiento Anualizado", 
-                           "Upside Analista", "RSI", "Beta", "Alerta Volatilidad", "Volumen H.F.", "Motivo"]
-            cols_existentes = [c for c in cols_mostrar if c in df_resultados.columns]
-            st.dataframe(df_resultados[cols_existentes], use_container_width=True)
-
-            # COMPRA: Score >= 7 (COMPRAR) o >= 4 (ACUMULAR)
-            df_candidatas = df_resultados[df_resultados["Status"].isin(["🟢 COMPRAR", "🟡 ACUMULAR"])].sort_values(by="Score", ascending=False)
-
-            puede_comprar, msg = puede_comprar_esta_semana()
-            if not puede_comprar:
-                st.warning(f"🛑 {msg}")
-            else:
-                cartera_actual = st.session_state.cartera_compras
-                tickers_en_cartera = set(cartera_actual["Ticker"].tolist()) if not cartera_actual.empty else set()
-                activos_actuales = len(cartera_actual) if not cartera_actual.empty else 0
-                cupo_libre = max_activos - activos_actuales
-
-                capital_total = st.session_state.params_bot["capital_total"]
-                invertido_total = cartera_actual["Capital Invertido Base"].sum() if not cartera_actual.empty else 0
-                caja_libre = capital_total - invertido_total
-
-                posiciones_nuevas = []
-                posiciones_sustituidas = []
-
-                for _, fila in df_candidatas.iterrows():
-                    puede, msg = puede_comprar_esta_semana(cantidad=1, costo=max_por_accion)
-                    if not puede:
-                        break
-
-                    if caja_libre < max_por_accion:
-                        st.info(f"🛑 Caja insuficiente: {caja_libre:.2f}")
-                        break
-
-                    if fila["Ticker"] in tickers_en_cartera:
-                        continue
-
-                    if cupo_libre > 0:
-                        caja_libre -= max_por_accion
-                        cupo_libre -= 1
-
-                        fecha_compra = datetime.now().strftime('%d/%m/%Y')
-                        fecha_liberacion = (datetime.now() + timedelta(days=st.session_state.params_bot["dias_candado"])).strftime('%d/%m/%Y')
-                        precio = fila["Precio Actual"]
-                        cantidad = round(max_por_accion / precio, 4)
-
-                        posiciones_nuevas.append({
-                            "Ticker": fila["Ticker"],
-                            "Acciones": cantidad,
-                            "Precio Entrada Base": precio,
-                            "Precio Entrada": f"{precio:.2f} {fila['Simbolo']}",
-                            "Crecimiento Anualizado": f"{fila['Crecimiento Anualizado']:.1f}%",
-                            "Upside Analista": fila["Upside Analista"],
-                            "Score": fila["Score"],
-                            "RSI": fila["RSI"],
-                            "Beta": fila["Beta"],
-                            "Alerta Volatilidad": fila["Alerta Volatilidad"],
-                            "Volumen H.F.": fila["Volumen H.F."],
-                            "Dividendo": formatear_dividendo(fila["Dividendo"]),
-                            "Interes Inst.": "🎯 FUERTE" if fila["Pct Institucional"] and fila["Pct Institucional"] > 0.5 else "🎯 MODERADO" if fila["Pct Institucional"] else "🎯 DEBIL",
-                            "Pct Institucional": f"{fila['Pct Institucional']*100:.1f}%" if fila['Pct Institucional'] else "N/A",
-                            "Market Cap": formatear_market_cap(fila["Market Cap"]),
-                            "Capital Invertido Base": max_por_accion,
-                            "Capital Invertido": f"{max_por_accion:.2f} {fila['Simbolo']}",
-                            "Fecha Compra": fecha_compra,
-                            "Candado": f"🔒 {fecha_liberacion}",
-                            "Moneda": fila["Moneda"]
-                        })
-                        registrar_compra(fila["Ticker"], max_por_accion)
-
-                    else:
-                        peor_score = 999.0
-                        peor_idx = None
-
-                        for idx_c, row_c in cartera_actual.iterrows():
-                            if esta_candado_liberado(str(row_c.get('Candado', ''))):
-                                score_actual = float(row_c.get('Score', 0))
-                                if score_actual < peor_score:
-                                    peor_score = score_actual
-                                    peor_idx = idx_c
-
-                        if peor_idx is not None:
-                            score_candidato = fila["Score"]
-                            umbral = st.session_state.params_bot["umbral_sustitucion"]
-
-                            if score_candidato > peor_score * umbral:
-                                ticker_vendido = cartera_actual.loc[peor_idx, 'Ticker']
-
-                                st.session_state.propuesta_sustitucion = {
-                                    "vender": ticker_vendido,
-                                    "comprar": fila["Ticker"],
-                                    "score_viejo": peor_score,
-                                    "score_nuevo": score_candidato,
-                                    "upside_nuevo": fila.get("Upside Analista", "N/A"),
-                                    "precio_nuevo": fila["Precio Actual"],
-                                    "moneda_nuevo": fila["Simbolo"],
-                                    "fila_completa": fila.to_dict()
-                                }
-                                st.warning(f"📋 PROPUESTA DE SUSTITUCION: Vender {ticker_vendido} → Comprar {fila['Ticker']}")
-                                st.info("Revisa la seccion '🔀 Propuestas de Sustitucion' abajo para autorizar.")
-                                break
-                            else:
-                                break
-                        else:
-                            st.info("🔒 Cartera llena, ningun candado liberado.")
-                            break
-
-                if posiciones_nuevas:
-                    df_nuevas = pd.DataFrame(posiciones_nuevas)
-                    if st.session_state.cartera_compras.empty:
-                        st.session_state.cartera_compras = df_nuevas
-                    else:
-                        st.session_state.cartera_compras = pd.concat(
-                            [st.session_state.cartera_compras, df_nuevas], 
-                            ignore_index=True
-                        )
-                    guardar_cartera(st.session_state.cartera_compras)
-
-                    if posiciones_sustituidas:
-                        for viejo, nuevo in posiciones_sustituidas:
-                            st.success(f"🔄 Sustituido {viejo} → {nuevo}")
-                    st.success(f"✅ {len(posiciones_nuevas)} posiciones. Semana: {get_registro_semana_actual()['compras_realizadas']}/{max_compras_sem}")
-                else:
-                    st.info("Sin nuevas posiciones esta semana.")
-
-            progress_bar.progress(100)
-            time.sleep(0.5)
-            progress_bar.empty()
-            status_text.empty()
-
     # MOSTRAR CARTERA
     df_mostrar = st.session_state.cartera_compras.copy()
     capital_total = st.session_state.params_bot["capital_total"]
@@ -979,11 +972,11 @@ with pestaña1:
             try:
                 cotizaciones_batch = yf.download(" ".join(lista_activos), period="5d", interval="1d", group_by="ticker", progress=False)
                 if len(lista_activos) == 1:
-                    precios_vivos[lista_activos[0]] = float(cotizaciones_batch['Close'].iloc[-1])
+                    precios_vivos[lista_activos[0]] = float(cotizaciones_batch["Close"].iloc[-1])
                 else:
                     for tick in lista_activos:
                         if tick in cotizaciones_batch.columns.levels[0]:
-                            precios_vivos[tick] = float(cotizaciones_batch[tick]['Close'].iloc[-1])
+                            precios_vivos[tick] = float(cotizaciones_batch[tick]["Close"].iloc[-1])
             except:
                 pass
 
@@ -1017,7 +1010,7 @@ with pestaña1:
     c2.metric("Invertido", f"{total_invertido:,.2f}")
     c3.metric("Caja Libre", f"{caja_libre:,.2f}")
     c4.metric("Semanal", f"{gastado_semana:,.0f}/{tope_semanal:,.0f}")
-    c5.metric("Compras Sem", f"{get_registro_semana_actual()['compras_realizadas']}/{max_compras_sem}")
+    c5.metric("Compras Sem", f"{get_registro_semana_actual()["compras_realizadas"]}/{max_compras_sem}")
 
     if alerta_cupo:
         st.warning(f"⚠️ Cupo maximo {max_activos} alcanzado.")
@@ -1026,7 +1019,8 @@ with pestaña1:
     st.write("### 📊 Cartera a 4 Años")
     if not df_mostrar.empty:
         cols = ["Ticker", "Acciones", "Precio Entrada", "Rendimiento Actual (P&L)", 
-                "Crecimiento Anualizado", "Upside Analista", "Score",
+                "Crecimiento Anualizado", "Upside Analista", "Revenue Growth", 
+                "Potencial Compuesto", "Confianza Dato", "Alertas Caida", "Score",
                 "RSI", "Beta", "Alerta Volatilidad", "Volumen H.F.", 
                 "Interes Inst.", "Market Cap",
                 "📝 Veredicto", "Estado Candado", "Capital Invertido", "Fecha Compra"]
@@ -1046,42 +1040,46 @@ with pestaña1:
 
         col_info1, col_info2 = st.columns(2)
         with col_info1:
-            st.error(f"🗑️ VENDER: **{prop['vender']}**")
-            st.write(f"Score actual: {prop['score_viejo']:.0f}/10")
+            st.error(f"🗑️ VENDER: **{prop["vender"]}**")
+            st.write(f"Score actual: {prop["score_viejo"]:.0f}/10")
         with col_info2:
-            st.success(f"💰 COMPRAR: **{prop['comprar']}**")
-            st.write(f"Score: {prop['score_nuevo']}/10")
-            st.write(f"Upside Analista: {prop['upside_nuevo']}")
-            st.write(f"Precio: {prop['precio_nuevo']:.2f} {prop['moneda_nuevo']}")
+            st.success(f"💰 COMPRAR: **{prop["comprar"]}**")
+            st.write(f"Score: {prop["score_nuevo"]}/10")
+            st.write(f"Upside Analista: {prop["upside_nuevo"]}")
+            st.write(f"Precio: {prop["precio_nuevo"]:.2f} {prop["moneda_nuevo"]}")
 
         st.write("**Motivos de la propuesta:**")
-        st.write(f"• La nueva oportunidad tiene un Score {prop['score_nuevo']/prop['score_viejo']:.1f}x mejor")
-        st.write(f"• El activo actual ({prop['vender']}) tiene el candado liberado")
+        st.write(f"• La nueva oportunidad tiene un Score {prop["score_nuevo"]/prop["score_viejo"]:.1f}x mejor")
+        st.write(f"• El activo actual ({prop["vender"]}) tiene el candado liberado")
 
         col_ok, col_ko = st.columns(2)
         with col_ok:
             if st.button("✅ AUTORIZAR SUSTITUCION", key="auth_sustitucion"):
-                fila = pd.Series(prop['fila_completa'])
+                fila = pd.Series(prop["fila_completa"])
 
                 cartera_actual = st.session_state.cartera_compras
-                idx_vender = cartera_actual[cartera_actual['Ticker'] == prop['vender']].index[0]
-                capital_liberado = cartera_actual.loc[idx_vender, 'Capital Invertido Base']
+                idx_vender = cartera_actual[cartera_actual["Ticker"] == prop["vender"]].index[0]
+                capital_liberado = cartera_actual.loc[idx_vender, "Capital Invertido Base"]
 
                 cartera_actual = cartera_actual.drop(idx_vender).reset_index(drop=True)
                 st.session_state.cartera_compras = cartera_actual
 
-                fecha_compra = datetime.now().strftime('%d/%m/%Y')
-                fecha_liberacion = (datetime.now() + timedelta(days=st.session_state.params_bot["dias_candado"])).strftime('%d/%m/%Y')
-                precio = prop['precio_nuevo']
+                fecha_compra = datetime.now().strftime("%d/%m/%Y")
+                fecha_liberacion = (datetime.now() + timedelta(days=st.session_state.params_bot["dias_candado"])).strftime("%d/%m/%Y")
+                precio = prop["precio_nuevo"]
                 cantidad = round(max_por_accion / precio, 4)
 
                 nueva_posicion = {
-                    "Ticker": prop['comprar'],
+                    "Ticker": prop["comprar"],
                     "Acciones": cantidad,
                     "Precio Entrada Base": precio,
-                    "Precio Entrada": f"{precio:.2f} {prop['moneda_nuevo']}",
-                    "Crecimiento Anualizado": f"{fila['Crecimiento Anualizado']:.1f}%",
+                    "Precio Entrada": f"{precio:.2f} {prop["moneda_nuevo"]}",
+                    "Crecimiento Anualizado": f"{fila["Crecimiento Anualizado"]:.1f}%",
                     "Upside Analista": fila["Upside Analista"],
+                    "Revenue Growth": fila["Revenue Growth"],
+                    "Potencial Compuesto": fila["Potencial Compuesto"],
+                    "Confianza Dato": fila["Confianza Dato"],
+                    "Alertas Caida": fila["Alertas Caida"],
                     "Score": fila["Score"],
                     "RSI": fila["RSI"],
                     "Beta": fila["Beta"],
@@ -1089,10 +1087,10 @@ with pestaña1:
                     "Volumen H.F.": fila["Volumen H.F."],
                     "Dividendo": formatear_dividendo(fila["Dividendo"]),
                     "Interes Inst.": "🎯 FUERTE" if fila["Pct Institucional"] and fila["Pct Institucional"] > 0.5 else "🎯 MODERADO" if fila["Pct Institucional"] else "🎯 DEBIL",
-                    "Pct Institucional": f"{fila['Pct Institucional']*100:.1f}%" if fila['Pct Institucional'] else "N/A",
+                    "Pct Institucional": f"{fila["Pct Institucional"]*100:.1f}%" if fila["Pct Institucional"] else "N/A",
                     "Market Cap": formatear_market_cap(fila["Market Cap"]),
                     "Capital Invertido Base": max_por_accion,
-                    "Capital Invertido": f"{max_por_accion:.2f} {prop['moneda_nuevo']}",
+                    "Capital Invertido": f"{max_por_accion:.2f} {prop["moneda_nuevo"]}",
                     "Fecha Compra": fecha_compra,
                     "Candado": f"🔒 {fecha_liberacion}",
                     "Moneda": fila["Moneda"]
@@ -1101,10 +1099,10 @@ with pestaña1:
                 df_nueva = pd.DataFrame([nueva_posicion])
                 st.session_state.cartera_compras = pd.concat([cartera_actual, df_nueva], ignore_index=True)
                 guardar_cartera(st.session_state.cartera_compras)
-                registrar_compra(prop['comprar'], max_por_accion)
+                registrar_compra(prop["comprar"], max_por_accion)
 
                 st.session_state.propuesta_sustitucion = None
-                st.success(f"✅ Sustitucion ejecutada: {prop['vender']} → {prop['comprar']}")
+                st.success(f"✅ Sustitucion ejecutada: {prop["vender"]} → {prop["comprar"]}")
                 st.rerun()
 
         with col_ko:
@@ -1145,20 +1143,37 @@ with pestaña2:
                 if h.empty or len(h) < 50:
                     st.error(f"No hay suficientes datos para {tick}")
                 else:
-                    p_actual = h['Close'].iloc[-1]
-                    media_50 = h['Close'].iloc[-50:].mean()
-                    media_200 = h['Close'].iloc[-200:].mean() if len(h) >= 200 else media_50
+                    p_actual = h["Close"].iloc[-1]
+                    media_50 = h["Close"].iloc[-50:].mean()
+                    media_200 = h["Close"].iloc[-200:].mean() if len(h) >= 200 else media_50
 
-                    target_val, div_yield, moneda, pct_inst, market_cap, sector, beta_info = obtener_info_segura(tick)
+                    target_val, div_yield, moneda, pct_inst, market_cap, sector, beta_info, revenue_growth = obtener_info_segura(tick)
 
                     rsi_valor = calcular_rsi(h)
                     beta_valor = calcular_beta(h, beta_info)
 
-                    # NUEVO MOTOR LIMPIO
-                    crec_anual, upside_anal = calcular_metricas_limpias(h, p_actual, tick)
-                    score, status, motivos = calcular_score_y_status(
-                        crec_anual, upside_anal, rsi_valor, media_200, p_actual
+                    # NUEVO MOTOR v6.1
+                    crec_anual, upside_anal, rev_growth = calcular_metricas_limpias(h, p_actual, tick)
+                    
+                    confianza, motivo_conf = calcular_confianza_dato(crec_anual, upside_anal, rev_growth)
+                    potencial_comp = calcular_potencial_compuesto(crec_anual, upside_anal, rev_growth)
+                    
+                    score, status, motivos, potencial_final = calcular_score_y_status(
+                        crec_anual, upside_anal, rev_growth, rsi_valor, media_200, p_actual
                     )
+
+                    # NUEVO v6.1: Evaluar contexto de caida
+                    alertas_caida_list = []
+                    try:
+                        precio_ayer = h["Close"].iloc[-2]
+                        cambio_hoy = ((p_actual - precio_ayer) / precio_ayer) * 100
+                        if cambio_hoy <= -5:
+                            score, status, motivos, alertas_caida_list = evaluar_caida_para_buyhold(
+                                tick, h, p_actual, crec_anual, upside_anal, rev_growth,
+                                score, status, motivos
+                            )
+                    except:
+                        pass
 
                     # Alerta caida
                     alerta_caida = None
@@ -1169,14 +1184,22 @@ with pestaña2:
                         score = 0
 
                     sym = simbolo_moneda(moneda)
+                    
+                    confianza_fmt = confianza
+                    if confianza == "BAJA":
+                        confianza_fmt = "🔴 BAJA"
+                    elif confianza == "MEDIA":
+                        confianza_fmt = "🟡 MEDIA"
+                    else:
+                        confianza_fmt = "🟢 ALTA"
 
                     st.write("#### 📊 Evolucion del Precio")
-                    h['MA50'] = h['Close'].rolling(window=50).mean()
-                    h['MA200'] = h['Close'].rolling(window=200).mean()
+                    h["MA50"] = h["Close"].rolling(window=50).mean()
+                    h["MA200"] = h["Close"].rolling(window=200).mean()
                     chart_data = pd.DataFrame({
-                        'Precio': h['Close'],
-                        'Media 50d': h['MA50'],
-                        'Media 200d': h['MA200']
+                        "Precio": h["Close"],
+                        "Media 50d": h["MA50"],
+                        "Media 200d": h["MA200"]
                     })
                     st.line_chart(chart_data, use_container_width=True)
 
@@ -1192,6 +1215,16 @@ with pestaña2:
                     c6.metric("Media 200d", f"{media_200:.2f} {sym}")
                     c7.metric("Dividendo", formatear_dividendo(div_yield))
                     c8.metric("RSI (14)", f"{rsi_valor:.1f}")
+                    
+                    c9, c10, c11 = st.columns(3)
+                    c9.metric("Revenue Growth", f"{rev_growth:.1f}%" if rev_growth else "N/A")
+                    c10.metric("Potencial Compuesto", f"{potencial_comp:.1f}%" if potencial_comp else "N/A")
+                    c11.metric("Confianza Dato", confianza_fmt)
+
+                    if alertas_caida_list:
+                        st.write("#### 🚨 Alertas de Caida")
+                        for alerta in alertas_caida_list:
+                            st.warning(alerta)
 
                     if beta_valor is not None:
                         c_beta = st.columns([1, 2, 1])[1]
@@ -1221,8 +1254,10 @@ with pestaña2:
                     with st.expander("📋 Detalle de puntuacion"):
                         st.write("**Puntuacion (sobre 10):**")
                         st.write(f"• Tendencia (MA200): {'+4' if p_actual > media_200 else '0'}")
-                        st.write(f"• Momentum (Crec. Anual): {'+3' if crec_anual >= 20 else '+1' if crec_anual >= 10 else '0'}")
-                        st.write(f"• Valor (Upside Analista): {'+3' if upside_anal and upside_anal > 10 else '+1' if upside_anal and upside_anal > 0 else '0'}")
+                        st.write(f"• Momentum (Crec. Anual): {'+2' if crec_anual >= 20 else '+1' if crec_anual >= 10 else '0'}")
+                        st.write(f"• Valor (Upside Analista): {'+2' if upside_anal and upside_anal > 10 else '+1' if upside_anal and upside_anal > 0 else '0'}")
+                        st.write(f"• Fundamental (Revenue Growth): {'+2' if rev_growth and rev_growth >= 20 else '+1' if rev_growth and rev_growth >= 10 else '0'}")
+                        st.write(f"• Potencial Compuesto: {'-2' if potencial_comp and potencial_comp < 20 else '0'}")
                         st.write(f"• RSI: {'-3' if rsi_valor > 70 else '-1' if rsi_valor > 65 else '0'}")
             except Exception as e:
                 st.error(f"Error: {e}")
@@ -1259,25 +1294,43 @@ with pestaña2:
                             datos_lista.append({
                                 "Ticker": tick, "Status": "⚪ SIN DATOS", "Score": 0,
                                 "Precio": "N/A", "Crecimiento Anualizado": "N/A",
-                                "Upside Analista": "N/A", "RSI": "N/A",
-                                "Beta": "N/A", "Alerta Volatilidad": "",
+                                "Upside Analista": "N/A", "Revenue Growth": "N/A",
+                                "Potencial Compuesto": "N/A", "Confianza Dato": "N/A",
+                                "Alertas Caida": "", "RSI": "N/A", "Beta": "N/A", "Alerta Volatilidad": "",
                                 "Motivo": "Datos insuficientes"
                             })
                             continue
 
-                        p_actual = h['Close'].iloc[-1]
-                        p_media = h['Close'].iloc[-50:].mean()
+                        p_actual = h["Close"].iloc[-1]
+                        p_media = h["Close"].iloc[-50:].mean()
 
-                        target_val, div_yield, moneda, pct_inst, market_cap, sector, beta_info = obtener_info_segura(tick)
+                        target_val, div_yield, moneda, pct_inst, market_cap, sector, beta_info, revenue_growth = obtener_info_segura(tick)
 
                         rsi_valor = calcular_rsi(h)
                         beta_valor = calcular_beta(h, beta_info)
 
-                        # NUEVO MOTOR LIMPIO
-                        crec_anual, upside_anal = calcular_metricas_limpias(h, p_actual, tick)
-                        score, status, motivos = calcular_score_y_status(
-                            crec_anual, upside_anal, rsi_valor, p_media, p_actual
+                        # NUEVO MOTOR v6.1
+                        crec_anual, upside_anal, rev_growth = calcular_metricas_limpias(h, p_actual, tick)
+                        
+                        confianza, motivo_conf = calcular_confianza_dato(crec_anual, upside_anal, rev_growth)
+                        potencial_comp = calcular_potencial_compuesto(crec_anual, upside_anal, rev_growth)
+                        
+                        score, status, motivos, potencial_final = calcular_score_y_status(
+                            crec_anual, upside_anal, rev_growth, rsi_valor, p_media, p_actual
                         )
+
+                        # NUEVO v6.1: Evaluar contexto de caida
+                        alertas_caida_list = []
+                        try:
+                            precio_ayer = h["Close"].iloc[-2]
+                            cambio_hoy = ((p_actual - precio_ayer) / precio_ayer) * 100
+                            if cambio_hoy <= -5:
+                                score, status, motivos, alertas_caida_list = evaluar_caida_para_buyhold(
+                                    tick, h, p_actual, crec_anual, upside_anal, rev_growth,
+                                    score, status, motivos
+                                )
+                        except:
+                            pass
 
                         # Alerta caida
                         alerta_caida = None
@@ -1289,6 +1342,16 @@ with pestaña2:
                             motivos.insert(0, f"🚨 {motivo_caida}")
 
                         sym = simbolo_moneda(moneda)
+                        
+                        confianza_fmt = confianza
+                        if confianza == "BAJA":
+                            confianza_fmt = "🔴 BAJA"
+                        elif confianza == "MEDIA":
+                            confianza_fmt = "🟡 MEDIA"
+                        else:
+                            confianza_fmt = "🟢 ALTA"
+                        
+                        alertas_str = " | ".join(alertas_caida_list) if alertas_caida_list else ""
 
                         datos_lista.append({
                             "Ticker": tick, 
@@ -1297,6 +1360,10 @@ with pestaña2:
                             "Precio": f"{p_actual:.2f} {sym}",
                             "Crecimiento Anualizado": f"{crec_anual:.1f}%",
                             "Upside Analista": f"{upside_anal:.1f}%" if upside_anal else "N/A",
+                            "Revenue Growth": f"{rev_growth:.1f}%" if rev_growth else "N/A",
+                            "Potencial Compuesto": f"{potencial_comp:.1f}%" if potencial_comp else "N/A",
+                            "Confianza Dato": confianza_fmt,
+                            "Alertas Caida": alertas_str,
                             "RSI": f"{rsi_valor:.1f}",
                             "Beta": f"{beta_valor:.2f}" if beta_valor is not None else "N/A",
                             "Alerta Volatilidad": "⚠️ BETA ALTO" if beta_valor and beta_valor > 2.0 else "⚡ Volatil" if beta_valor and beta_valor > 1.5 else "",
@@ -1306,8 +1373,9 @@ with pestaña2:
                         datos_lista.append({
                             "Ticker": tick, "Status": "⚪ ERROR", "Score": 0,
                             "Precio": "N/A", "Crecimiento Anualizado": "N/A",
-                            "Upside Analista": "N/A", "RSI": "N/A",
-                            "Beta": "N/A", "Alerta Volatilidad": "",
+                            "Upside Analista": "N/A", "Revenue Growth": "N/A",
+                            "Potencial Compuesto": "N/A", "Confianza Dato": "N/A",
+                            "Alertas Caida": "", "RSI": "N/A", "Beta": "N/A", "Alerta Volatilidad": "",
                             "Motivo": f"Error: {str(e)[:30]}"
                         })
 
@@ -1321,7 +1389,7 @@ with pestaña2:
                     # Destacar cuales compraria el bot
                     df_comprar = df_lista[df_lista["Status"].isin(["🟢 COMPRAR", "🟡 ACUMULAR"])]
                     if not df_comprar.empty:
-                        st.success(f"🟢 El Bot compraria: {', '.join(df_comprar['Ticker'].tolist())}")
+                        st.success(f"🟢 El Bot compraria: {', '.join(df_comprar["Ticker"].tolist())}")
 
                     st.dataframe(df_lista, use_container_width=True)
                 else:
@@ -1335,7 +1403,7 @@ with pestaña2:
 with pestaña3:
     st.subheader("⚙️ Gestion de Listas de Seguimiento")
 
-    for nombre_lista, tickers_lista in list(st.session_state.listas_guardadas.items()):
+    for nombre_lista, tickers_lista in st.session_state.listas_guardadas.items():
         with st.expander(f"📋 {nombre_lista} ({len(tickers_lista)} tickers)"):
             st.write(f"**Tickers:** {', '.join(tickers_lista)}")
 
@@ -1390,7 +1458,7 @@ with pestaña3:
 
     if st.button("💾 Guardar", key="guardar_nueva"):
         if nombre_nueva and tickers_nueva:
-            tickers_limpios = [t.strip().upper() for t in tickers_nueva.replace("\n", ",").split(",") if t.strip()]
+            tickers_limpios = [t.strip().upper() for t in tickers_nueva.replace(chr(10), ",").split(",") if t.strip()]
             st.session_state.listas_guardadas[nombre_nueva] = tickers_limpios
             guardar_listas(st.session_state.listas_guardadas)
             st.success(f"✅ Lista '{nombre_nueva}' guardada ({len(tickers_limpios)} tickers).")
@@ -1423,4 +1491,7 @@ with pestaña3:
         )
 
 st.write("---")
-st.caption("Centro de Mando Financiero Pro v5.0 | Motor de Análisis Limpio | Streamlit + yFinance")
+st.caption("Centro de Mando Financiero Pro v6.1 | Motor de Analisis Limpio + Contexto de Caida | Streamlit + yFinance")
+
+
+
