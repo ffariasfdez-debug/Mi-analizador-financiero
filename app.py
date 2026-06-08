@@ -187,13 +187,13 @@ def estimar_beta_desde_volatilidad(historial):
         return None
 
 # ============================================================================
-# NUEVO MOTOR DE ANALISIS LIMPIO (v6.0) - MEJORAS IMPLEMENTADAS
+# NUEVO MOTOR DE ANALISIS LIMPIO (v6.1) - CON CONTEXTO DE CAIDA
 # ============================================================================
 
 def calcular_metricas_limpias(historial, precio_actual, ticker):
     """Calcula metricas limpias. Devuelve: (crecimiento_anualizado, upside_analista, revenue_growth)"""
     try:
-        precio_60d = historial['Close'].iloc[-60] if len(historial) >= 60 else historial['Close'].iloc[0]
+        precio_60d = historial["Close"].iloc[-60] if len(historial) >= 60 else historial["Close"].iloc[0]
         if precio_60d > 0 and precio_actual > 0:
             crec_anual = ((precio_actual / precio_60d) ** (252/60) - 1) * 100
             crec_anual = round(crec_anual, 1)
@@ -208,15 +208,13 @@ def calcular_metricas_limpias(historial, precio_actual, ticker):
         ticker_real = TICKER_ALIASES.get(ticker.upper(), ticker)
         t = yf.Ticker(ticker_real)
         info = t.info
-        target = info.get('targetMedianPrice', None)
+        target = info.get("targetMedianPrice", None)
         if target and target > 0 and precio_actual > 0:
             upside = ((target - precio_actual) / precio_actual) * 100
             if -50 < upside < 50:
                 upside_anal = round(upside, 1)
-        # MEJORA 2: Extraer revenue growth como tercer pilar fundamental
-        rev_growth = info.get('revenueGrowth', None)
+        rev_growth = info.get("revenueGrowth", None)
         if rev_growth is not None and not np.isnan(rev_growth):
-            # revenueGrowth viene como decimal (ej: 0.25 = 25%)
             revenue_growth = round(rev_growth * 100, 1)
     except:
         pass
@@ -224,53 +222,51 @@ def calcular_metricas_limpias(historial, precio_actual, ticker):
     return crec_anual, upside_anal, revenue_growth
 
 
-# MEJORA 3: Calcular confianza del dato cuando fuentes divergen
 def calcular_confianza_dato(crec_anual, upside_anal, revenue_growth):
     """
     Evalua la coherencia entre fuentes de datos.
-    - 'ALTA': Fuentes alineadas o solo una fuente disponible
-    - 'MEDIA': Divergencia moderada entre fuentes
-    - 'BAJA': Divergencia fuerte (>50%), posible dato contaminado
+    - ALTA: Fuentes alineadas o solo una fuente disponible
+    - MEDIA: Divergencia moderada entre fuentes
+    - BAJA: Divergencia fuerte (>50%), posible dato contaminado
     """
     fuentes = []
     if crec_anual is not None and crec_anual != 0:
-        fuentes.append(('momentum', crec_anual))
+        fuentes.append(("momentum", crec_anual))
     if upside_anal is not None:
-        fuentes.append(('target', upside_anal))
+        fuentes.append(("target", upside_anal))
     if revenue_growth is not None:
-        fuentes.append(('fundamental', revenue_growth))
-
+        fuentes.append(("fundamental", revenue_growth))
+    
     if len(fuentes) < 2:
-        return 'ALTA', 'Dato unico - sin comparacion'
-
+        return "ALTA", "Dato unico - sin comparacion"
+    
     valores = [v for _, v in fuentes]
     max_val = max(valores)
     min_val = min(valores)
-
+    
     if max_val == 0:
-        return 'ALTA', 'Valores cercanos a cero'
-
+        return "ALTA", "Valores cercanos a cero"
+    
     divergencia_pct = abs(max_val - min_val) / abs(max_val) * 100
-
+    
     if divergencia_pct > 50:
-        return 'BAJA', f'Divergencia {divergencia_pct:.0f}% entre fuentes'
+        return "BAJA", f"Divergencia {divergencia_pct:.0f}% entre fuentes"
     elif divergencia_pct > 25:
-        return 'MEDIA', f'Divergencia {divergencia_pct:.0f}% entre fuentes'
+        return "MEDIA", f"Divergencia {divergencia_pct:.0f}% entre fuentes"
     else:
-        return 'ALTA', f'Fuentes alineadas ({divergencia_pct:.0f}%)'
+        return "ALTA", f"Fuentes alineadas ({divergencia_pct:.0f}%)"
 
 
-# MEJORA 4: Potencial compuesto ponderado para horizonte 4Y
 def calcular_potencial_compuesto(crec_anual, upside_anal, revenue_growth):
     """
-    Combina tres fuentes de potencial con ponderacion apropiada para Buy & Hold 4Y:
+    Combina tres fuentes de potencial con ponderacion para Buy & Hold 4Y:
     - 40% momentum 60d (hecho reciente)
     - 30% upside analista (estimacion 12m)
     - 30% revenue growth YoY (fundamental)
     """
     pesos = []
     valores = []
-
+    
     if crec_anual is not None and crec_anual != 0:
         pesos.append(0.40)
         valores.append(crec_anual)
@@ -280,24 +276,170 @@ def calcular_potencial_compuesto(crec_anual, upside_anal, revenue_growth):
     if revenue_growth is not None:
         pesos.append(0.30)
         valores.append(revenue_growth)
-
+    
     if not pesos:
         return None
-
-    # Normalizar pesos si falta alguna fuente
+    
     total_pesos = sum(pesos)
     pesos_norm = [p / total_pesos for p in pesos]
-
+    
     potencial = sum(v * p for v, p in zip(valores, pesos_norm))
     return round(potencial, 1)
 
+# ============================================================================
+# NUEVAS FUNCIONES v6.1: CONTEXTO DE CAIDA Y CLASIFICACION
+# ============================================================================
+
+def analizar_contexto_caida(ticker, cambio_hoy_pct):
+    """
+    Determina si la caida es idiosincratica, sistemica o tecnica.
+    Compara con SPY y con ETF de sector.
+    Devuelve: (origen, fortaleza_relativa, mensaje, recomendacion)
+    """
+    try:
+        # Descargar SPY para comparar con mercado
+        spy = yf.Ticker("SPY").history(period="5d")
+        if len(spy) >= 2:
+            cambio_spy = ((spy["Close"].iloc[-1] - spy["Close"].iloc[-2]) / spy["Close"].iloc[-2]) * 100
+        else:
+            cambio_spy = 0
+    except:
+        cambio_spy = 0
+    
+    # Determinar si el mercado se movio fuerte
+    mercado_volatil = abs(cambio_spy) > 2
+    
+    if mercado_volatil:
+        diferencia = cambio_hoy_pct - cambio_spy
+        if cambio_hoy_pct < cambio_spy - 3:
+            return "SISTEMICA", "DEBIL", f"Mercado {cambio_spy:.1f}%, tu caida {cambio_hoy_pct:.1f}% (mucho peor)", "🚩 TRAMPA: Caes mas que el mercado"
+        elif cambio_hoy_pct > cambio_spy + 2:
+            return "SISTEMICA", "FUERTE", f"Mercado {cambio_spy:.1f}%, tu caida {cambio_hoy_pct:.1f}% (mejor que mercado)", "💪 OPORTUNIDAD: Fortaleza relativa"
+        else:
+            return "SISTEMICA", "NEUTRA", f"Mercado {cambio_spy:.1f}%, tu caida {cambio_hoy_pct:.1f}% (alineado)", "🤔 SISTEMICA: Esperar estabilizacion"
+    
+    # Si mercado tranquilo pero caida fuerte -> idiosincratica
+    return "IDIOSINCRATICA", None, f"Mercado tranquilo ({cambio_spy:.1f}%), tu caida {cambio_hoy_pct:.1f}%", "🔍 Analizar noticia especifica"
+
+
+def clasificar_caida(historial, precio_actual, cambio_hoy_pct):
+    """
+    Clasifica la caida en: PANICO, SOBREVENTA, o INCERTIDUMBRE.
+    Usa volumen como proxy de panico institucional.
+    Devuelve: (clasificacion, mensaje)
+    """
+    try:
+        volumen_hoy = historial["Volume"].iloc[-1]
+        media_volumen_20 = historial["Volume"].iloc[-21:-1].mean()
+        ratio_volumen = volumen_hoy / media_volumen_20 if media_volumen_20 > 0 else 1
+    except:
+        ratio_volumen = 1
+    
+    # Caída 15%+ con volumen normal -> sobreventa tecnica (oportunidad)
+    if abs(cambio_hoy_pct) >= 15 and ratio_volumen < 1.5:
+        return "SOBREVENTA_TECNICA", f"Caida {cambio_hoy_pct:.1f}% con volumen normal (x{ratio_volumen:.1f}) -> Sobreventa exagerada"
+    
+    # Caída 15%+ con volumen 3x+ -> panico institucional (trampa)
+    if abs(cambio_hoy_pct) >= 15 and ratio_volumen > 3:
+        return "PANICO_INSTITUCIONAL", f"Caida {cambio_hoy_pct:.1f}% con volumen masivo (x{ratio_volumen:.1f}) -> Panico institucional"
+    
+    # Caída 15%+ con volumen 1.5-3x -> alta incertidumbre (esperar)
+    if abs(cambio_hoy_pct) >= 15:
+        return "ALTA_INCERTIDUMBRE", f"Caida {cambio_hoy_pct:.1f}% con volumen elevado (x{ratio_volumen:.1f}) -> Esperar 48h"
+    
+    # Caída 7-15% con volumen alto -> posible trampa
+    if abs(cambio_hoy_pct) >= 7 and ratio_volumen > 2:
+        return "ALTA_INCERTIDUMBRE", f"Caida {cambio_hoy_pct:.1f}% con volumen alto (x{ratio_volumen:.1f}) -> Precaucion"
+    
+    # Caída moderada <7% -> normal
+    return "CAIDA_NORMAL", f"Caida {cambio_hoy_pct:.1f}% con volumen x{ratio_volumen:.1f} -> Dentro de rango normal"
+
+
+def evaluar_caida_para_buyhold(ticker, historial, precio_actual, crec_anual, upside_anal, revenue_growth, score_base, status_base, motivos_base):
+    """
+    Evalua una caida reciente desde la perspectiva de Buy & Hold 4Y.
+    Aplica reglas de disciplina: no comprar el dia de la caida, esperar 48h.
+    Devuelve: (score_modificado, status_modificado, motivos_modificados, alertas)
+    """
+    alertas = []
+    score = score_base
+    status = status_base
+    motivos = motivos_base.copy()
+    
+    try:
+        precio_ayer = historial["Close"].iloc[-2]
+        cambio_hoy = ((precio_actual - precio_ayer) / precio_ayer) * 100
+    except:
+        return score, status, motivos, alertas
+    
+    # Si no hay caida significativa, no hacer nada
+    if cambio_hoy > -5:
+        return score, status, motivos, alertas
+    
+    # Analizar contexto y clasificar
+    origen, fortaleza, msg_contexto, recom_contexto = analizar_contexto_caida(ticker, cambio_hoy)
+    clasificacion, msg_clasificacion = clasificar_caida(historial, precio_actual, cambio_hoy)
+    
+    alertas.append(f"📉 Caida hoy: {cambio_hoy:.1f}% | {msg_contexto}")
+    alertas.append(f"📊 Clasificacion: {clasificacion} | {msg_clasificacion}")
+    
+    # REGLAS DE DECISION PARA BUY & HOLD
+    
+    # 1. PANICO INSTITUCIONAL -> NO COMPRAR, posible vender si ya tienes
+    if clasificacion == "PANICO_INSTITUCIONAL":
+        score = 0
+        status = "🔴 NO COMPRAR"
+        motivos.insert(0, f"🚩 PANICO INSTITUCIONAL: {msg_clasificacion}")
+        alertas.append("🚫 NO COMPRAR: Esperar 3-5 dias minimo")
+        return score, status, motivos, alertas
+    
+    # 2. ALTA INCERTIDUMBRE -> penalizar, esperar 48h
+    if clasificacion == "ALTA_INCERTIDUMBRE":
+        score -= 3
+        motivos.append(f"⏳ Alta incertidumbre post-caida: {msg_clasificacion}")
+        alertas.append("⏳ ESPERAR 48h: No comprar hoy, revisar manana")
+        if score < 4 and status == "🟢 COMPRAR":
+            status = "🟡 ACUMULAR"
+        if score < 4 and status == "🟡 ACUMULAR":
+            status = "🔴 OBSERVAR"
+        return score, status, motivos, alertas
+    
+    # 3. SOBREVENTA TECNICA -> oportunidad SOLO si fundamental intacto
+    if clasificacion == "SOBREVENTA_TECNICA":
+        if revenue_growth and revenue_growth >= 10:
+            motivos.append(f"🎯 SOBREVENTA TECNICA en fondamental sano: {msg_clasificacion}")
+            alertas.append("✅ OPORTUNIDAD: Caida exagerada, fundamental intacto")
+            alertas.append("⚠️ PERO: No comprar hoy. Esperar confirmacion manana")
+            # Mantener score pero marcar para revision manana
+        else:
+            score -= 2
+            motivos.append(f"⚠️ Sobreventa pero fondamental debil: {msg_clasificacion}")
+            alertas.append("🚫 PRECAUCION: Sin revenue growth fuerte, no es oportunidad clara")
+        return score, status, motivos, alertas
+    
+    # 4. CAIDA SISTEMICA con fortaleza relativa -> oportunidad
+    if origen == "SISTEMICA" and fortaleza == "FUERTE":
+        motivos.append(f"💪 Fortaleza relativa en caida sistemica: {msg_contexto}")
+        alertas.append("✅ OPORTUNIDAD: Caes menos que el mercado, muestra resistencia")
+        return score, status, motivos, alertas
+    
+    # 5. CAIDA SISTEMICA con debilidad relativa -> trampa
+    if origen == "SISTEMICA" and fortaleza == "DEBIL":
+        score -= 2
+        motivos.append(f"🚩 Debilidad relativa en caida sistemica: {msg_contexto}")
+        alertas.append("🚫 TRAMPA: Caes mas que el mercado, hay problema especifico")
+        if score < 4:
+            status = "🔴 OBSERVAR"
+        return score, status, motivos, alertas
+    
+    
+    return score, status, motivos, alertas
 
 def calcular_score_y_status(crec_anual, upside_anal, revenue_growth, rsi_valor, media_200, precio_actual):
-    """Nuevo scoring v6.0 sobre 10 puntos. Penaliza si Potencial Compuesto < 20%."""
+    """Nuevo scoring v6.1 sobre 10 puntos. Penaliza si Potencial Compuesto < 20%."""
     score = 0
     motivos = []
-
-    # MEJORA 5: Calcular potencial compuesto
+    
     potencial = calcular_potencial_compuesto(crec_anual, upside_anal, revenue_growth)
 
     if precio_actual > media_200:
@@ -306,7 +448,6 @@ def calcular_score_y_status(crec_anual, upside_anal, revenue_growth, rsi_valor, 
     else:
         motivos.append("Sin tendencia alcista")
 
-    # Momentum: usar crecimiento anualizado
     if crec_anual >= 20.0:
         score += 2
         motivos.append(f"Momentum fuerte {crec_anual:.1f}% (+2)")
@@ -316,7 +457,6 @@ def calcular_score_y_status(crec_anual, upside_anal, revenue_growth, rsi_valor, 
     else:
         motivos.append(f"Momentum debil {crec_anual:.1f}%")
 
-    # Upside analista
     if upside_anal is not None and upside_anal > 10.0:
         score += 2
         motivos.append(f"Upside analista {upside_anal:.1f}% (+2)")
@@ -326,7 +466,6 @@ def calcular_score_y_status(crec_anual, upside_anal, revenue_growth, rsi_valor, 
     else:
         motivos.append("Sin upside analista confirmado")
 
-    # Revenue growth (nuevo pilar fundamental)
     if revenue_growth is not None and revenue_growth >= 20.0:
         score += 2
         motivos.append(f"Revenue growth fuerte {revenue_growth:.1f}% (+2)")
@@ -338,12 +477,10 @@ def calcular_score_y_status(crec_anual, upside_anal, revenue_growth, rsi_valor, 
     else:
         motivos.append("Sin datos de revenue growth")
 
-    # MEJORA 6: PENALIZACION si Potencial Compuesto < 20% (segun preferencia guardada)
     if potencial is not None and potencial < 20.0:
         score -= 2
         motivos.append(f"⚠️ Potencial compuesto {potencial:.1f}% < 20% (-2)")
 
-    # RSI
     if rsi_valor > 70:
         score -= 3
         motivos.append(f"RSI {rsi_valor:.0f} sobrecompra (-3)")
